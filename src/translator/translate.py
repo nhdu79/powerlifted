@@ -414,7 +414,7 @@ def remove_static_predicates_from_goal(task, static_pred):
         else:
             removed += 1
     for g in task.goal.parts:
-        if g.predicate not in static_pred:
+        if isinstance(g, pddl.MinimumKnowledgeOperator) or g.predicate not in static_pred:
             parts.append(g)
         else:
             removed += 1
@@ -448,14 +448,15 @@ def is_trivially_unsolvable(task, static_pred):
                       file=native_stdout)
                 return True
 
-    if isinstance(task.goal, pddl.conditions.Atom) or isinstance(task.goal, pddl.Atom):
+    if isinstance(task.goal, pddl.Atom):
         if task.goal.predicate in static_pred and violated_in_initial_state(task.init, task.goal):
             return True
     for g in task.goal.parts:
-        if g.predicate in static_pred and violated_in_initial_state(task.init, g):
-            # It is a static info, so it's truth value should be correct
-            # in the initial state
-            return True
+        if isinstance(g, pddl.Atom):
+            if g.predicate in static_pred and violated_in_initial_state(task.init, g):
+                # It is a static info, so it's truth value should be correct
+                # in the initial state
+                return True
     return False
 
 

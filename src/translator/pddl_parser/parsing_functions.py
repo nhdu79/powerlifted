@@ -14,10 +14,16 @@ import pddl
 # features is still present. This was done in purpose so we can modify
 # the parser more easily in case such features are added in the future.
 
+MKO = "mko"
+
 UNSUPPORTED_FEATURES = ["imply",
                         "forall",
                         "exists",
                         "when"]
+
+SUPPORTED_IN_MKOS = ["exists"]
+
+
 def naturals_iterator():
     n = 0
     while True:
@@ -27,7 +33,9 @@ def naturals_iterator():
 uniq_fresh_var_id = naturals_iterator()
 
 
-def is_tag_supported(tag):
+def is_tag_supported(tag, within_mko=False):
+    if within_mko and tag in SUPPORTED_IN_MKOS:
+        return
     if tag in UNSUPPORTED_FEATURES:
         print('ERROR: PDDL feature "%s" not supported yet.' % tag, file=sys.stderr)
         sys.exit(-1)
@@ -87,10 +95,11 @@ def parse_condition(alist, type_dict, predicate_dict):
     return condition.uniquify_variables({}).simplified()
 
 
-def parse_condition_aux(alist, negated, type_dict, predicate_dict):
+def parse_condition_aux(alist, negated, type_dict, predicate_dict,
+                        within_mko=False):
     """Parse a PDDL condition. The condition is translated into NNF on the fly."""
     tag = alist[0]
-    is_tag_supported(tag)
+    is_tag_supported(tag, within_mko)
     if tag in ("and", "or", "not", "imply"):
         args = alist[1:]
         if tag == "imply":
@@ -98,22 +107,26 @@ def parse_condition_aux(alist, negated, type_dict, predicate_dict):
         if tag == "not":
             assert len(args) == 1
             return parse_condition_aux(
-                args[0], not negated, type_dict, predicate_dict)
+                args[0], not negated, type_dict, predicate_dict, within_mko)
     elif tag in ("forall", "exists"):
         parameters = parse_typed_list(alist[1])
         args = alist[2:]
         assert len(args) == 1
+    elif tag == MKO:
+        return parse_mko(alist, type_dict, predicate_dict, negated=negated,
+                         within_mko=within_mko)
     else:
         return parse_literal(alist, type_dict, predicate_dict, negated=negated)
 
     if tag == "imply":
         parts = [parse_condition_aux(
-                args[0], not negated, type_dict, predicate_dict),
+                args[0], not negated, type_dict, predicate_dict, within_mko),
                  parse_condition_aux(
-                args[1], negated, type_dict, predicate_dict)]
+                args[1], negated, type_dict, predicate_dict, within_mko)]
         tag = "or"
     else:
-        parts = [parse_condition_aux(part, negated, type_dict, predicate_dict)
+        parts = [parse_condition_aux(part, negated, type_dict, predicate_dict,
+                                     within_mko)
                  for part in args]
 
     if tag == "and" and not negated or tag == "or" and negated:
@@ -124,6 +137,18 @@ def parse_condition_aux(alist, negated, type_dict, predicate_dict):
         return pddl.UniversalCondition(parameters, parts)
     elif tag == "exists" and not negated or tag == "forall" and negated:
         return pddl.ExistentialCondition(parameters, parts)
+
+
+def parse_mko(alist, type_dict, predicate_dict, negated=False, within_mko=False):
+    if len(alist) != 2:
+        raise SystemExit(f"mko used with wrong arity: {alist}")
+
+    if within_mko:
+        raise SystemExit(f"mkos may not be nested: {alist}")
+
+    condition = parse_condition_aux(alist[1], False, type_dict,
+                                    predicate_dict, True)
+    return pddl.conditions.MinimumKnowledgeOperator([condition], negated)
 
 
 def parse_literal(alist, type_dict, predicate_dict, negated=False):

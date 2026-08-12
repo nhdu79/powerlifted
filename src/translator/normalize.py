@@ -317,7 +317,7 @@ def split_disjunctions(task):
                 new_proxy.register_owner(task)
             proxy.delete_owner(task)
 
-# [4] Pull existential quantifiers out of conjunctions and group them.
+# [4] Pull existential quantifiers out of conjunctions (but not out of mkos) and group them.
 #
 # After removing universal quantifiers and creating the disjunctive form,
 # only the following (representatives of) rules are needed:
@@ -328,34 +328,57 @@ def move_existential_quantifiers(task):
     def recurse(condition):
         existential_parts = []
         other_parts = []
+        has_modified_mko = False
         for part in condition.parts:
-            part = recurse(part)
+            part, modified = recurse(part)
+            has_modified_mko |= modified
             if isinstance(part, pddl.ExistentialCondition):
                 existential_parts.append(part)
             else:
                 other_parts.append(part)
-        if not existential_parts:
-            return condition
+        if not existential_parts and not has_modified_mko:
+            return condition, has_modified_mko
+
 
         # Rule (1): Combine nested quantifiers.
         if isinstance(condition, pddl.ExistentialCondition):
-            new_parameters = condition.parameters + existential_parts[0].parameters
-            new_parts = existential_parts[0].parts
-            return pddl.ExistentialCondition(new_parameters, new_parts)
+            if existential_parts:
+                new_parameters = condition.parameters + existential_parts[0].parameters
+                new_parts = existential_parts[0].parts
+                return pddl.ExistentialCondition(new_parameters, new_parts), has_modified_mko
+            return pddl.ExistentialCondition(condition.parameters,
+                                             other_parts[0]), has_modified_mko 
 
         # Rule (2): Pull quantifiers out of conjunctions.
-        assert isinstance(condition, pddl.Conjunction)
-        new_parameters = []
-        new_conjunction_parts = other_parts
-        for part in existential_parts:
-            new_parameters += part.parameters
-            new_conjunction_parts += part.parts
-        new_conjunction = pddl.Conjunction(new_conjunction_parts)
-        return pddl.ExistentialCondition(new_parameters, (new_conjunction,))
+        if isinstance(condition, pddl.Conjunction):
+            if existential_parts:
+                new_parameters = []
+                new_conjunction_parts = other_parts
+                for part in existential_parts:
+                    new_parameters += part.parameters
+                    new_conjunction_parts += part.parts
+                new_conjunction = pddl.Conjunction(new_conjunction_parts)
+                return (pddl.ExistentialCondition(new_parameters,
+                                                  (new_conjunction,)),
+                        has_modified_mko)
+            else:
+                return pddl.Conjunction(other_parts), has_modified_mko
+
+        if isinstance(condition, pddl.Literal):
+            return condition, False
+
+        assert isinstance(condition, pddl.MinimumKnowledgeOperator)
+        if not existential_parts:
+            return condition, False
+        else:
+            assert not other_parts
+            return pddl.MinimumKnowledgeOperator([existential_parts[0]],
+                                                 condition.negated), True
 
     for proxy in all_conditions(task):
         if proxy.condition.has_existential_part():
-            proxy.set(recurse(proxy.condition).simplified())
+            condition, _ = recurse(proxy.condition)
+            proxy.set(condition.simplified())
 
 
 # [5a] Drop existential quantifiers from axioms, turning them
@@ -406,11 +429,13 @@ def eliminate_existential_quantifiers_from_conditional_effects(task):
 
 def substitute_complicated_goal(task):
     goal = task.goal
-    if isinstance(goal, pddl.Literal):
+    if (isinstance(goal, pddl.Literal) or
+        isinstance(goal, pddl.MinimumKnowledgeOperator)):
         return
     elif isinstance(goal, pddl.Conjunction):
         for item in goal.parts:
-            if not isinstance(item, pddl.Literal):
+            if (not isinstance(item, pddl.Literal) and
+                not isinstance(item, pddl.MinimumKnowledgeOperator)):
                 break
         else:
             return
