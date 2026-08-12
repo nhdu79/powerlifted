@@ -21,6 +21,7 @@ import compile_types
 import complete_state
 import normalize
 import options
+import ontology
 import pddl_parser
 import pddl
 import pddl_to_prolog
@@ -46,7 +47,6 @@ def test_if_experiment(test):
 def perform_sanity_checks(task):
     for pred in task.predicates:
         assert not pred.name.startswith("action_"), "Predicate name cannot start with \'action_\'."
-
 
 def main():
     timer = timers.Timer()
@@ -77,7 +77,8 @@ def main():
 
     assert isinstance(task.goal, pddl.Conjunction) or \
            isinstance(task.goal, pddl.Atom) or \
-           isinstance(task.goal, pddl.NegatedAtom), \
+           isinstance(task.goal, pddl.NegatedAtom) or \
+           isinstance(task.goal, pddl.MinimumKnowledgeOperator), \
         "Goal is not conjunctive."
 
     if options.ground_state_representation:
@@ -114,6 +115,9 @@ def main():
 
     with timers.timing("Removing unused predicate symbols"):
         remove_static_predicates_from_goal(task, static_pred)
+
+    with timers.timing("Processing ontology and minimum knowledge opearots"):
+        ontology.process_ontology(task, options.ontology)
 
     with timers.timing("Printing names and representation type"):
         print_names_and_representation(output, task.domain_name, task.task_name)

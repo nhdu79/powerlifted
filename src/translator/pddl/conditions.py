@@ -83,6 +83,10 @@ class Condition(object):
         for part in self.parts:
             part.collect_predicates(result)
 
+    def collect_mkos(self, result):
+        for part in self.parts:
+            part.collect_mkos(result)
+
     def free_variables(self):
         result = set()
         for part in self.parts:
@@ -121,6 +125,9 @@ class MinimumKnowledgeOperator(Condition): # MKO
 
     def change_parts(self, parts):
         return self.__class__(parts, self.negated)
+
+    def collect_mkos(self, result):
+        result.add(self)
 
 
 class ConstantCondition(Condition):
