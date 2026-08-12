@@ -55,6 +55,9 @@ def main():
         task = pddl_parser.open(
             domain_filename=options.domain, task_filename=options.task)
 
+    print('The ontology is in file', options.ontology,
+          'but it is not yet used.')
+
     print('Processing task', task.task_name)
     with timers.timing("Normalizing task"):
         normalize.normalize(task)

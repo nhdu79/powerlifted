@@ -52,7 +52,8 @@ def run_search(build_dir, options, extra):
 
 def run_translator(build_dir, options, extra):
     translator = subprocess.Popen([os.path.join(build_dir, 'translator', 'translate.py'),
-                                   options.domain, options.instance, '--output-file', options.translator_file] + extra)
+                                   options.domain, options.instance,
+                                   options.ontology, '--output-file', options.translator_file] + extra)
     translator.communicate()
     if translator.returncode != 0:
         raise RuntimeError("Error during preprocessing/translation.")
