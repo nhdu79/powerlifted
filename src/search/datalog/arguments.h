@@ -35,6 +35,9 @@ public:
     explicit Arguments(std::vector<Term> &&args)
         : arguments(args.begin(), args.end()) {}
 
+    explicit Arguments(std::initializer_list<Term> args)
+        : arguments(args.begin(), args.end()) {}
+
     Term operator[](size_t i) const
     {
         assert(i < arguments.size());

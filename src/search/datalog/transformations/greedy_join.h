@@ -3,7 +3,7 @@
 
 #include "../datalog.h"
 
-#include "../rules/generic_rule.h"
+#include "../rules/generic_body.h"
 #include "../rules/product.h"
 #include "../rules/project.h"
 #include "../rules/rule_base.h"

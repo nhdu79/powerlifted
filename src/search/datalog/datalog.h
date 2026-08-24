@@ -20,20 +20,17 @@ class Datalog {
     std::vector<Fact> permanent_edb;
     std::vector<std::unique_ptr<RuleBase>> rules;
 
-    // Is this what we want?
-    const Task &task;
-
     int goal_atom_idx;
 
     std::vector<std::string> predicate_names;
+    std::vector<std::string> object_names;
     std::unordered_map<std::string, int> map_new_predicates_to_idx;
 
     std::vector<std::vector<GroundAtom>> useful_atoms;
 
-    void create_rules(AnnotationGenerator ann);
-    void generate_action_rule(const ActionSchema &schema, std::vector<size_t> nullary_preconds, AnnotationGenerator &annotation_generator);
-
-    void generate_action_effect_rules(const ActionSchema &schema, AnnotationGenerator &annotation_generator);
+    void create_rules(const Task &task, AnnotationGenerator ann);
+    void generate_action_rule(const Task &task, const ActionSchema &schema, std::vector<size_t> nullary_preconds, AnnotationGenerator &annotation_generator);
+    void generate_action_effect_rules(const Task &task, const ActionSchema &schema, AnnotationGenerator &annotation_generator);
 
     std::vector<DatalogAtom> get_action_effect_rule_body(const ActionSchema &schema);
     void get_nullary_atoms_from_vector(const std::vector<bool> &nullary_predicates_in_precond,
@@ -46,18 +43,14 @@ class Datalog {
         return predicate_names.size();
     }
 
-    void output_rule(const std::unique_ptr<RuleBase> &rule) const;
     void output_parameters(const Arguments& v) const;
 
     void get_always_reachable_rule_heads();
 
-    std::unique_ptr<RuleBase> convert_into_project_rule(const std::unique_ptr<RuleBase> &rule,
-                                                        const Task &task);
-    std::unique_ptr<RuleBase> convert_into_product_rule(const std::unique_ptr<RuleBase> &rule,
-                                                        const Task &task);
+    std::unique_ptr<RuleBase> convert_into_project_rule(const std::unique_ptr<RuleBase> &rule);
+    std::unique_ptr<RuleBase> convert_into_product_rule(const std::unique_ptr<RuleBase> &rule);
     void convert_into_join_rules(std::vector<std::unique_ptr<RuleBase>> &join_rules,
-                                 std::unique_ptr<RuleBase> &rule,
-                                 const Task &task);
+                                 std::unique_ptr<RuleBase> &rule);
     bool is_product_rule(const std::unique_ptr<RuleBase> &rule);
 
     void split_rule(std::vector<std::unique_ptr<RuleBase>> &join_rules,
@@ -85,6 +78,8 @@ class Datalog {
 public:
     Datalog(const Task &task, AnnotationGenerator annotation_generator);
 
+    Datalog(std::vector<Predicate> &predicates, std::vector<Object> &objects, std::vector<std::unique_ptr<RuleBase>> rules);
+
 
     std::vector<std::unique_ptr<RuleBase>> &get_rules() {
         return rules;
@@ -98,7 +93,7 @@ public:
 
     void materialize_static_stratum(const Task &task, int heuristic_type);
 
-    void convert_rules_to_normal_form(const Task &task);
+    void convert_rules_to_normal_form();
 
     bool remove_duplicate_rules();
 
@@ -110,8 +105,10 @@ public:
 
     void add_goal_rule(const Task &task, AnnotationGenerator &annotation_generator);
 
+    void output_rule(const RuleBase &rule) const;
+
     void output_rules() const {
-        for (const auto &rule : rules) output_rule(rule);
+        for (const auto &rule : rules) output_rule(*rule);
     }
 
     int get_goal_atom_idx() {

@@ -42,7 +42,7 @@ void Datalog::rename_variables() {
                 new_terms.emplace_back(map_variable_to_new_index[index],
                                        VARIABLE);
             }
-            rule->update_condition_arguments(counter, new_terms);
+            rule->get_body().update_condition_arguments(counter, new_terms);
             counter++;
         }
 

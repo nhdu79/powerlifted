@@ -4,7 +4,7 @@
 #include "../datalog.h"
 
 #include "../rules/rule_base.h"
-#include "../rules/generic_rule.h"
+#include "../rules/generic_body.h"
 #include "../rules/join.h"
 #include "../rules/product.h"
 #include "../rules/project.h"
@@ -66,12 +66,12 @@ bool Datalog::remove_duplicate_rules() {
                      * old variable names.
                      */
                     std::vector<Term> old_args;
-                    for (auto t : rules[j]->get_condition_arguments(counter)) {
+                    for (auto t : rules[j]->get_body().get_condition_arguments(counter)) {
                         old_args.emplace_back(t);
                     }
                     DatalogAtom new_atom = head_rule_i;
                     new_atom.update_arguments(old_args);
-                    rules[j]->replace_single_condition(counter, new_atom);
+                    rules[j]->get_body().replace_single_condition(counter, new_atom);
                 }
                 ++counter;
             }

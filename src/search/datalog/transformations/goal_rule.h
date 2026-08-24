@@ -31,7 +31,7 @@ void Datalog::add_goal_rule(const Task &task, AnnotationGenerator &annotation_ge
         body.emplace_back(Arguments(), nullary_goal_idx, false);
     }
 
-    rules.emplace_back(std::make_unique<ProductRule>(0, goal, body, std::move(ann)));
+    rules.emplace_back(std::make_unique<RuleBase>(0, goal, RuleBody(ProductBody(body)), std::move(ann)));
 }
 
 }

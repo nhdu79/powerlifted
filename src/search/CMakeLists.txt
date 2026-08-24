@@ -12,11 +12,9 @@ endif()
 # --- Source files ---
 
 set(CORE_SOURCES
-        main.cc
         action.cc
         action_schema.cc
         hash_structures.cc
-        parser.cc
         plan_manager.cc
         predicate.cc
         search_statistics.cc
@@ -37,7 +35,9 @@ set(DATALOG_SOURCES
         datalog/object.cc
         datalog/grounder/weighted_grounder.cc
         datalog/rule_matcher.cc
-        datalog/rules/rule_base.cc)
+        datalog/rules/rule_base.cc
+        datalog/rules/rule_body_base.cc
+        datalog/rules/disjunctive_existential_rule.cc)
 
 set(HEURISTIC_SOURCES
         heuristics/add_heuristic.cc
@@ -90,6 +90,8 @@ set(UTIL_SOURCES
         algorithms/kpkc.cc)
 
 add_executable(search
+        main.cc
+        parser.cc
         ${CORE_SOURCES}
         ${DATABASE_SOURCES}
         ${DATALOG_SOURCES}
@@ -100,24 +102,35 @@ add_executable(search
         ${SUCCESSOR_GENERATOR_SOURCES}
         ${UTIL_SOURCES})
 
+add_executable(datalog_test
+        datalog/datalog_test.cc
+        ${CORE_SOURCES}
+        ${DATALOG_SOURCES}
+        ${UTIL_SOURCES})
+
 # --- Compiler settings ---
 
-target_compile_features(search PUBLIC cxx_std_17)
-set_target_properties(search PROPERTIES
+add_library(project_options INTERFACE)
+
+target_compile_features(project_options INTERFACE cxx_std_17)
+set_target_properties(search datalog_test PROPERTIES
         CXX_STANDARD_REQUIRED ON
         CXX_EXTENSIONS OFF)
 
-target_compile_options(search PRIVATE
+target_compile_options(project_options INTERFACE
         -Wall
         -Wnon-virtual-dtor)
 
 if (APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(STATUS "Applying macOS/Clang-specific compiler options")
-    target_compile_options(search PRIVATE
+    target_compile_options(project_options INTERFACE
             -Wno-deprecated-declarations
             -Wno-deprecated-builtins
             -Wno-vla)
 endif()
+
+target_link_libraries(search PRIVATE project_options)
+target_link_libraries(datalog_test PRIVATE project_options)
 
 # --- Build-type specific flags ---
 
