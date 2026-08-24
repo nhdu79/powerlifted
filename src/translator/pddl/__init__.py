@@ -22,6 +22,7 @@ from .conditions import Conjunction
 from .conditions import Disjunction
 from .conditions import UniversalCondition
 from .conditions import ExistentialCondition
+from .conditions import MinimumKnowledgeOperator
 
 from .effects import ConditionalEffect
 from .effects import ConjunctiveEffect

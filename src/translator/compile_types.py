@@ -9,6 +9,7 @@ import pddl
 ##
 ##   - Compile types into unary predicates;
 ##   - Add unary type predicates as action preconditions;
+##   - Replace types in MKO existential quantifiers with unary predicate;
 ##   - Add unary type and supertype predicates to initial state;
 ##   - Remove types from action parameters (see comment in __str__ of
 # TypedObject);
@@ -45,6 +46,9 @@ def compile_into_unary_predicates(task):
     return
 
 
+def replace_type_in_mko(mko, graph):
+    mko.untyped()
+
 def add_conditions_to_actions(task, graph):
     """Add unary type conditions to each action schema according to their
     parameters.
@@ -60,6 +64,9 @@ def add_conditions_to_actions(task, graph):
         # and constants, and add types to that in the precondition
         precond = action.get_action_preconditions
         for cond in precond:
+            if isinstance(cond, pddl.conditions.MinimumKnowledgeOperator):
+                replace_type_in_mko(cond, graph)
+                continue
             assert isinstance(cond, pddl.Literal)
             for arg in cond.args:
                 name = arg

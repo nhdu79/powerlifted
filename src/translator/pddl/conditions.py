@@ -79,6 +79,14 @@ class Condition(object):
     def instantiate(self, var_mapping, init_facts, fluent_facts, result):
         raise ValueError("Cannot instantiate condition: not normalized")
 
+    def collect_predicates(self, result):
+        for part in self.parts:
+            part.collect_predicates(result)
+
+    def collect_mkos(self, result):
+        for part in self.parts:
+            part.collect_mkos(result)
+
     def free_variables(self):
         result = set()
         for part in self.parts:
@@ -102,6 +110,24 @@ class Condition(object):
             if part.has_universal_part():
                 return True
         return False
+
+
+class MinimumKnowledgeOperator(Condition): # MKO
+
+    def __init__(self, parts, negated):
+        self.parts = tuple(parts)
+        self.hash = hash((self.__class__, self.parts))
+        self.negated = negated
+
+    def uniquify_variables(self, type_map, renamings={}):
+        return self.__class__([part.uniquify_variables(type_map, renamings)
+                               for part in self.parts], self.negated)
+
+    def change_parts(self, parts):
+        return self.__class__(parts, self.negated)
+
+    def collect_mkos(self, result):
+        result.add(self)
 
 
 class ConstantCondition(Condition):
@@ -270,6 +296,7 @@ class UniversalCondition(QuantifiedCondition):
 class ExistentialCondition(QuantifiedCondition):
     def _untyped(self, parts):
         type_literals = [par.get_atom() for par in self.parameters]
+        print(type_literals)
         return ExistentialCondition(self.parameters,
                                     [Conjunction(type_literals + parts)])
 
@@ -325,6 +352,9 @@ class Literal(Condition):
 
     def _dump(self):
         return str(self)
+
+    def collect_predicates(self, result):
+        result.add(self.predicate)
 
     def change_parts(self, parts):
         return self
