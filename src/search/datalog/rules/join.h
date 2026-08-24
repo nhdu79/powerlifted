@@ -1,7 +1,8 @@
-#ifndef GROUNDER_RULES_JOIN_RULE_H
-#define GROUNDER_RULES_JOIN_RULE_H
+#ifndef GROUNDER_RULES_JOIN_BODY_H
+#define GROUNDER_RULES_JOIN_BODY_H
 
-#include "rule_base.h"
+#include "rule_body_base.h"
+#include "map_variable_position.h"
 
 #include "../datalog_fact.h"
 
@@ -25,6 +26,11 @@ namespace datalog {
 // hottest path in the grounder). Content-based hash and element-wise operator==
 // are identical to the previous std::vector<int>, so the maps behave the same.
 using JoinHashKey = utils::small_vector<int, 2>;
+
+// Reused across join() calls so the per-call join key is built in place
+// instead of allocating a fresh vector every time (join() is the hottest
+// path in the grounder).
+inline JoinHashKey join_key_buffer;
 
 struct JoinHashKeyHash {
     std::size_t operator()(const JoinHashKey &v) const {
@@ -142,16 +148,13 @@ public:
     }
 };
 
-class JoinRule : public RuleBase {
+class JoinBody : public RuleBodyBase {
     JoinHashTable hash_table_indices;
     JoiningVariables position_of_joining_vars;
 
 public:
-    JoinRule(int weight,
-             DatalogAtom eff,
-             std::vector<DatalogAtom> c,
-             std::unique_ptr<Annotation> annotation)
-        : RuleBase(weight, std::move(eff), std::move(c), std::move(annotation)),
+    JoinBody(std::vector<DatalogAtom> c)
+        : RuleBodyBase(std::move(c)),
           position_of_joining_vars(conditions)
     {
     }
@@ -182,9 +185,89 @@ public:
 
     int get_inverse_position(int i) const { return (i + 1) % 2; }
 
-    std::string get_type_name() override { return "JoinRule"; }
+    std::string get_type_name() const override { return "JoinRule"; }
+
+    /*
+    * Compute the new facts produced by a join rule.
+    *
+    * The function starts by computing the fact restricted to the key elements
+    * (i.e., elements that the free var matches with the other condition). Then,
+    * it updates the hash tables.
+    *
+    * Next, it maps every free variable to its position in the head atom, similarly
+    * as done in the projection, but without considering constants in the head
+    * because these should not happen. (I guess.)
+    *
+    * Then, it computes the new ground head atom by performing first creating
+    * the new atom with the values from the currently fact being expanded. Then,
+    * it loops over all previously expanded facts matching the same key (the ones
+    * in the hash-table) and completing the instantiation.
+    *
+    * The function returns a list of actions.
+    *
+    */
+    template <typename C>
+    void instantiate(Arguments new_arguments_persistent,
+        MapVariablePosition variable_position,
+        const Fact &fact,
+        int position,
+        int (*aggregation_function)(int, int),
+        C construct_fact) {
+
+        // Build the join key in the reused buffer (no per-call allocation).
+        JoinHashKey &key = join_key_buffer;
+        key.clear();
+        for (int i : get_position_of_matching_vars(position)) {
+            key.push_back(fact.argument(i).get_index());
+        }
+
+        // Insert the fact in the hash table of the key
+        insert_fact_in_hash(fact, key, position);
+
+        int position_counter = 0;
+        for (auto &arg : get_condition_arguments(position)) {
+            int pos = variable_position.position_of(arg);
+            if (pos!=-1 and !arg.is_object()) {
+                new_arguments_persistent.set_term_to_object(pos,
+                                                            fact.argument(position_counter).get_index());
+            }
+            position_counter++;
+        }
+
+        const int inverse_position = get_inverse_position(position);
+        for (const Fact &already_achieved_fact : get_facts_matching_key(key, inverse_position)) {
+            Arguments new_arguments = new_arguments_persistent;
+            position_counter = 0;
+            for (auto &arg : get_condition_arguments(inverse_position)) {
+                int pos = variable_position.position_of(arg);
+                if (pos!=-1 and !arg.is_object()) {
+                    new_arguments.set_term_to_object(pos,
+                                                    already_achieved_fact.argument(position_counter).get_index());
+                }
+                position_counter++;
+            }
+
+            // Achiever body in rule-body order. If `fact` is the atom in the second
+            // position (index 1), swap so the body order is preserved. Constructing
+            // the two-int Achievers directly avoids a per-fact heap-allocated
+            // std::vector<int> (the inline small_vector<int,2> holds both elements).
+            int achiever_first = fact.get_fact_index();
+            int achiever_second = already_achieved_fact.get_fact_index();
+            if (position == 1) {
+                std::swap(achiever_first, achiever_second);
+            }
+
+            // TODO: fix: specify aggregation_function as argument to instantiate! (for all three implementations)
+            int cost = aggregation_function(fact.get_cost(), already_achieved_fact.get_cost());
+            // rule index and cost for achievers have to be filled in by the calling method
+            construct_fact(std::move(new_arguments),
+                    cost,
+                    Achievers(achiever_first, achiever_second, -1, 0));
+        }
+    }
+
 };
 
 }  // namespace datalog
 
-#endif  // GROUNDER_RULES_JOIN_RULE_H
+#endif  // GROUNDER_RULES_JOIN_BODY_H

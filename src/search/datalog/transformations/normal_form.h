@@ -9,10 +9,7 @@
 #include "../datalog.h"
 
 #include "../rules/rule_base.h"
-#include "../rules/generic_rule.h"
-#include "../rules/join.h"
-#include "../rules/product.h"
-#include "../rules/project.h"
+#include "../rules/rule_body.h"
 
 #include <limits>
 #include <queue>
@@ -25,15 +22,16 @@
 
 namespace  datalog {
 
+// new_split_rule should have a body of type JoinBody
 void add_missing_entries_to_source_table(int position, std::vector<std::unique_ptr<RuleBase>> &join_rules,
                                          const std::vector<DatalogAtom> &new_rule_conditions,
-                                         std::unique_ptr<JoinRule> &new_split_rule,
+                                         std::unique_ptr<RuleBase> &new_split_rule,
                                          std::vector<int> &term_indices_in_new_args) {
     int idx_condition = new_rule_conditions[position].get_predicate_index();
-    VariableSource source = new_split_rule->get_variable_source_object();
+    VariableSource source = new_split_rule->get_body().get_variable_source_object();
     for (const auto &join_rule : join_rules) {
         if (join_rule->get_effect().get_predicate_index() == idx_condition) {
-            const VariableSource source_join_rule = join_rule->get_variable_source_object_by_ref();
+            const VariableSource source_join_rule = join_rule->get_body().get_variable_source_object_by_ref();
             for (size_t entry_table_counter = 0; entry_table_counter < source_join_rule.get_table().size(); ++entry_table_counter) {
                 int entry_term = source_join_rule.get_term_from_table_entry_index(entry_table_counter);
                 if (std::find(term_indices_in_new_args.begin(), term_indices_in_new_args.end(), entry_term) == term_indices_in_new_args.end()) {
@@ -43,25 +41,26 @@ void add_missing_entries_to_source_table(int position, std::vector<std::unique_p
             }
         }
     }
-    new_split_rule->update_variable_source_table(std::move(source));
+    new_split_rule->get_body().update_variable_source_table(std::move(source));
 }
 
-std::unique_ptr<RuleBase> Datalog::convert_into_project_rule(const std::unique_ptr<RuleBase> &rule,
-                                                    const Task &task) {
-    VariableSource old_source = rule->get_variable_source_object();
-    std::unique_ptr<RuleBase> project_rule = std::make_unique<ProjectRule>(rule->get_weight(), rule->get_effect(), rule->get_conditions(),  rule->get_annotation());
-    project_rule->update_variable_source_table(std::move(old_source));
+std::unique_ptr<RuleBase> Datalog::convert_into_project_rule(const std::unique_ptr<RuleBase> &rule) {
+    VariableSource old_source = rule->get_body().get_variable_source_object();
+    std::unique_ptr<RuleBase> project_rule = std::make_unique<RuleBase>(rule->get_weight(), 
+                                                                            rule->get_effect(),
+                                                                            RuleBody(ProjectBody(rule->get_conditions())),
+                                                                            rule->get_annotation());
+    project_rule->get_body().update_variable_source_table(std::move(old_source));
     return project_rule;
 }
 
-std::unique_ptr<RuleBase> Datalog::convert_into_product_rule(const std::unique_ptr<RuleBase> &rule,
-                                                    const Task &task) {
-    VariableSource old_source = rule->get_variable_source_object();
-    std::unique_ptr<RuleBase> product_rule = std::make_unique<ProductRule>(rule->get_weight(),
+std::unique_ptr<RuleBase> Datalog::convert_into_product_rule(const std::unique_ptr<RuleBase> &rule) {
+    VariableSource old_source = rule->get_body().get_variable_source_object();
+    std::unique_ptr<RuleBase> product_rule = std::make_unique<RuleBase>(rule->get_weight(),
                                                                            rule->get_effect(),
-                                                                           rule->get_conditions(),
+                                                                           RuleBody(ProductBody(rule->get_conditions())),
                                                                            rule->get_annotation());
-    product_rule->update_variable_source_table(std::move(old_source));
+    product_rule->get_body().update_variable_source_table(std::move(old_source));
     return product_rule;
 }
 
@@ -84,9 +83,9 @@ void Datalog::split_rule(std::vector<std::unique_ptr<RuleBase>> &join_rules, std
     Arguments new_args = get_relevant_arguments_for_split(rule, new_rule_conditions, body_ids);
 
     DatalogAtom new_atom(new_args, idx, true);
-    std::unique_ptr<JoinRule> new_split_rule = std::make_unique<JoinRule>(0,
+    std::unique_ptr<RuleBase> new_split_rule = std::make_unique<RuleBase>(0,
                                                                           new_atom,
-                                                                          new_rule_conditions,
+                                                                          RuleBody(JoinBody(new_rule_conditions)),
                                                                           nullptr);
 
     // We need to get the entries of the variables in the tables of the conditions that were not
@@ -110,9 +109,9 @@ void Datalog::split_rule(std::vector<std::unique_ptr<RuleBase>> &join_rules, std
                                         new_split_rule,
                                         term_indices_in_new_args);
 
-    rule->update_conditions(new_atom,
+    rule->get_body().update_conditions(new_atom,
                             new_rule_conditions,
-                            new_split_rule->get_variable_source_object(),
+                            new_split_rule->get_body().get_variable_source_object(),
                             std::move(body_ids));
 
 
@@ -122,8 +121,7 @@ void Datalog::split_rule(std::vector<std::unique_ptr<RuleBase>> &join_rules, std
 
 
 void Datalog::convert_into_join_rules(std::vector<std::unique_ptr<RuleBase>> &join_rules,
-                                      std::unique_ptr<RuleBase> &rule,
-                                      const Task &task) {
+                                      std::unique_ptr<RuleBase> &rule) {
     while(rule->get_conditions().size() > 2) {
         JoinCost join_cost;
         size_t idx1 = std::numeric_limits<size_t>::max();
@@ -144,13 +142,13 @@ void Datalog::convert_into_join_rules(std::vector<std::unique_ptr<RuleBase>> &jo
         std::sort(indices.begin(), indices.end());
         split_rule(join_rules, rule, indices);
     }
-    std::unique_ptr<RuleBase> join_rule = std::make_unique<JoinRule>(rule->get_weight(),
+    std::unique_ptr<RuleBase> join_rule = std::make_unique<RuleBase>(rule->get_weight(),
                                                                      rule->get_effect(),
-                                                                     rule->get_conditions(),
+                                                                     RuleBody(JoinBody(rule->get_conditions())),
                                                                      rule->get_annotation());
 
 
-    join_rule->update_variable_source_table(rule->get_variable_source_object());
+    join_rule->get_body().update_variable_source_table(rule->get_body().get_variable_source_object());
 
     join_rules.emplace_back(std::move(join_rule));
 }
@@ -168,7 +166,7 @@ bool Datalog::is_product_rule(const std::unique_ptr<RuleBase> &rule) {
     return true;
 }
 
-void Datalog::convert_rules_to_normal_form(const Task &task) {
+void Datalog::convert_rules_to_normal_form() {
     std::vector<std::unique_ptr<RuleBase>> new_rules;
 
     /*
@@ -221,11 +219,11 @@ void Datalog::convert_rules_to_normal_form(const Task &task) {
 
                     Arguments new_args(std::move(remaining_args));
                     DatalogAtom new_atom(new_args, idx, true);
-                    std::unique_ptr<RuleBase> new_rule = std::make_unique<ProjectRule>(0,
+                    std::unique_ptr<RuleBase> new_rule = std::make_unique<RuleBase>(0,
                                                                                 new_atom,
-                                                                                std::vector<DatalogAtom>{condition},
+                                                                                RuleBody(ProjectBody{condition}),
                                                                                 nullptr);
-                    rule->update_single_condition_and_variable_source_table(i, new_atom);
+                    rule->get_body().update_single_condition_and_variable_source_table(i, new_atom);
                     new_rules.emplace_back(std::move(new_rule));
                 }
             }
@@ -256,15 +254,15 @@ void Datalog::convert_rules_to_normal_form(const Task &task) {
      */
     for (auto &rule : rules) {
         if (rule->get_conditions().size() == 1) {
-            new_rules.push_back(convert_into_project_rule(rule, task));
+            new_rules.push_back(convert_into_project_rule(rule));
         }
         else {
             if (is_product_rule(rule)) {
-                new_rules.push_back(convert_into_product_rule(rule, task));
+                new_rules.push_back(convert_into_product_rule(rule));
             }
             else {
                 std::vector<std::unique_ptr<RuleBase>> join_rules;
-                convert_into_join_rules(join_rules, rule, task);
+                convert_into_join_rules(join_rules, rule);
                 for (auto &join_rule : join_rules) {
                     new_rules.push_back(std::move(join_rule));
                 }

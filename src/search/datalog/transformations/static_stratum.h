@@ -62,7 +62,7 @@ void Datalog::materialize_static_stratum(const Task &task, int heuristic_type) {
     if (any_annotation) {
         for (const auto &rule : rules) {
             for (const auto &entry :
-                 rule->get_variable_source_object_by_ref().get_table()) {
+                 rule->get_body().get_variable_source_object_by_ref().get_table()) {
                 if (entry.first >= 0 &&
                     entry.first < int(rule->get_conditions().size())) {
                     tainted.insert(
@@ -111,7 +111,7 @@ void Datalog::materialize_static_stratum(const Task &task, int heuristic_type) {
         std::vector<Fact> no_state_facts;
         grounder.ground(*this, no_state_facts, -1);
         for (auto &rule : rules) {
-            rule->clean_up();
+            rule->get_body().clean_up();
         }
     }
     const size_t num_seed_facts = permanent_edb.size();

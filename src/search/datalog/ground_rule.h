@@ -3,8 +3,6 @@
 
 #include "datalog_fact.h"
 
-#include "rules/rule_base.h"
-
 namespace datalog {
 
 class GroundRule {

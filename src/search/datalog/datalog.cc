@@ -1,7 +1,8 @@
 #include "datalog.h"
 
-#include "rules/generic_rule.h"
+#include "rules/generic_body.h"
 #include "rules/product.h"
+#include "rules/rule_body_base.h"
 
 #include "transformations/action_predicate_removal.h"
 #include "transformations/generate_edb.h"
@@ -18,15 +19,27 @@
 using namespace datalog;
 using namespace std;
 
-Datalog::Datalog(const Task &task, AnnotationGenerator annotation_generator) : task(task) {
+Datalog::Datalog(const Task &task, AnnotationGenerator annotation_generator) {
 
     for (auto p : task.predicates) {
         predicate_names.push_back(p.get_name());
     }
-    create_rules(annotation_generator);
+    for (auto o : task.objects) {
+        object_names.push_back(o.get_name());
+    }
+    create_rules(task, annotation_generator);
 
     useful_atoms.resize(task.get_initial_state().get_relations().size());
 
+}
+
+Datalog::Datalog(vector<Predicate> &predicates, vector<Object> &objects, vector<std::unique_ptr<RuleBase>> rules) : rules(std::move(rules)) {
+    for (auto p : predicates) {
+        predicate_names.push_back(p.get_name());
+    }
+    for (auto o : objects) {
+        object_names.push_back(o.get_name());
+    }
 }
 
 void Datalog::get_nullary_atoms_from_vector(const vector<bool> &nullary_predicates_in_precond,
@@ -38,19 +51,19 @@ void Datalog::get_nullary_atoms_from_vector(const vector<bool> &nullary_predicat
     }
 }
 
-void Datalog::create_rules(AnnotationGenerator ann) {
+void Datalog::create_rules(const Task &task, AnnotationGenerator ann) {
     for (const ActionSchema &schema : task.get_action_schemas()) {
         const std::vector<bool> &nullary_predicates_in_precond = schema.get_positive_nullary_precond();
         std::vector<size_t> nullary_preconds;
         get_nullary_atoms_from_vector(nullary_predicates_in_precond, nullary_preconds);
-        generate_action_rule(schema, nullary_preconds, ann);
-        generate_action_effect_rules(schema, ann);
+        generate_action_rule(task, schema, nullary_preconds, ann);
+        generate_action_effect_rules(task, schema, ann);
         //generate_rules_with_n_ary_heads(schema, nullary_preconds);
         //generate_rules_with_nullary_heads(schema, nullary_preconds);
     }
 }
 
-void Datalog::generate_action_rule(const ActionSchema &schema,
+void Datalog::generate_action_rule(const Task &task, const ActionSchema &schema,
                                    std::vector<size_t> nullary_preconds, AnnotationGenerator &annotation_generator) {
     // Key the auxiliary predicate by schema index: the translator can emit
     // several schemas with the same name (e.g., split disjunctive
@@ -66,17 +79,17 @@ void Datalog::generate_action_rule(const ActionSchema &schema,
     // (e.g., logistics). This was already done in the previous implementation.
     std::reverse(body.begin(), body.end());
     std::unique_ptr<Annotation> ann = annotation_generator(schema.get_index(), task);
-    rules.emplace_back(make_unique<GenericRule>(schema.get_cost(), eff, std::move(body), std::move(ann), schema.get_index()));
+    rules.emplace_back(make_unique<RuleBase>(schema.get_cost(), eff, RuleBody(GenericBody(std::move(body), schema.get_index())), std::move(ann)));
 }
 
-void Datalog::generate_action_effect_rules(const ActionSchema &schema, AnnotationGenerator &annotation_generator) {
+void Datalog::generate_action_effect_rules(const Task &task, const ActionSchema &schema, AnnotationGenerator &annotation_generator) {
     vector<DatalogAtom> body = get_action_effect_rule_body(schema);
     for (const Atom &eff : schema.get_effects()) {
         if (eff.is_negated())
             continue;
         DatalogAtom effect(eff);
         std::unique_ptr<Annotation> ann = annotation_generator(-1, task);
-        rules.emplace_back(make_unique<GenericRule>(0, eff, body, std::move(ann)));
+        rules.emplace_back(make_unique<RuleBase>(0, eff, RuleBody(GenericBody(body)), std::move(ann)));
     }
     const vector<bool> &nullary_predicates_in_eff = schema.get_positive_nullary_effects();
     vector<size_t> nullary_effects;
@@ -84,7 +97,7 @@ void Datalog::generate_action_effect_rules(const ActionSchema &schema, Annotatio
     for (size_t eff_idx : nullary_effects) {
         DatalogAtom eff(Arguments(), eff_idx, false);
         std::unique_ptr<Annotation> ann = annotation_generator(-1, task);
-        rules.emplace_back(make_unique<GenericRule>(0, eff, body, std::move(ann), schema.get_index()));
+        rules.emplace_back(make_unique<RuleBase>(0, eff, RuleBody(GenericBody(body, schema.get_index())), std::move(ann)));
     }
 }
 
@@ -110,27 +123,27 @@ vector<DatalogAtom> Datalog::get_atoms_in_rule_body(const ActionSchema &schema,
     return body;
 }
 
-void Datalog::output_rule(const std::unique_ptr<RuleBase> &rule) const {
-    DatalogAtom effect = rule->get_effect();
+void Datalog::output_rule(const RuleBase &rule) const {
+    DatalogAtom effect = rule.get_effect();
     output_atom(effect);
-    size_t number_conditions = rule->get_conditions().size();
+    size_t number_conditions = rule.get_conditions().size();
     if (number_conditions == 0) {
         cout << "." << endl;
     }
     else {
         cout << " :- ";
     }
-    for (const auto &condition : rule->get_conditions()) {
+    for (const auto &condition : rule.get_conditions()) {
         --number_conditions;
         output_atom(condition);
         if (number_conditions > 0) {
             cout << ", ";
         }
         else {
-            cout << " [weight: " << rule->get_weight() << ", " << rule->get_type_name() << ", index:" << rule->get_index() << "]." << endl;
+            cout << " [weight: " << rule.get_weight() << ", " << rule.get_body().get_type_name() << ", index:" << rule.get_index() << "]." << endl;
         }
     }
-    rule->output_variable_table();
+    rule.get_body().output_variable_table();
 }
 
 void Datalog::output_atom(const DatalogAtom &atom) const {
@@ -143,7 +156,7 @@ void Datalog::output_parameters(const Arguments& v) const {
     int number_params = v.size();
     for (auto arg : v) {
         if (arg.is_object()) {
-            cout << task.get_object_name(arg.get_index());
+            cout << object_names[arg.get_index()];
         } else {
             cout << "?v" << arg.get_index();
         }
@@ -153,7 +166,7 @@ void Datalog::output_parameters(const Arguments& v) const {
 }
 
 const std::vector<Fact> &Datalog::get_facts() {
-    return permanent_edb;
+    return facts;
 }
 
 const std::vector<Fact> &Datalog::get_permanent_edb() {
@@ -167,7 +180,7 @@ int Datalog::get_instantiation_of_variable(const Fact &rule_head, int idx) const
      */
     const Achievers &achiever = rule_head.get_achievers();
     const RuleBase &r = *rules[achiever.get_achiever_rule_index()];
-    const VariableSource &variable_table = r.get_variable_source_object_by_ref();
+    const VariableSource &variable_table = r.get_body().get_variable_source_object_by_ref();
     if (variable_table.is_variable_found_in_body(idx)) {
         /*
          * We look at the variable source table and check if this instantiation is found in the
@@ -200,7 +213,7 @@ std::vector<int> Datalog::extract_variable_instantiation_from_rule(int head) con
     const datalog::Fact &f = get_fact_by_index(head);
     int rule_index = f.get_achiever_rule_index();
     const RuleBase &r = *rules[rule_index];
-    std::vector<int> instantiation(r.get_variable_source_object_by_ref().get_table().size());
+    std::vector<int> instantiation(r.get_body().get_variable_source_object_by_ref().get_table().size());
     for (size_t i = 0; i < instantiation.size(); ++i) {
         instantiation[i] = get_instantiation_of_variable(f, i);
     }

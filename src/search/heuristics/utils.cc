@@ -10,7 +10,7 @@ datalog::Datalog initialize_datalog(const Task &task,
         dl.remove_action_predicates(annotation_generator, task);
 
     // These transformations are always done.
-    dl.convert_rules_to_normal_form(task);
+    dl.convert_rules_to_normal_form();
     dl.add_goal_rule(task, annotation_generator);
 
     if (opts.get_rename_vars())

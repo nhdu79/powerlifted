@@ -27,14 +27,20 @@ class VariableSource {
     std::vector<int> map_entry_to_term;
 
 public:
-    VariableSource(const DatalogAtom &effect, const std::vector<DatalogAtom> &conditions) {
+    VariableSource(const std::vector<DatalogAtom> &conditions) {
         table.clear();
 
         std::vector<Term> all_arguments;
-        for (Term t: effect.get_arguments()) {
-            if (t.is_object()) continue;
-            all_arguments.emplace_back(t);
-        }
+        // skip collecting variables from the head, because all non-existential variables
+        // have to occur in the body
+        // for (const DatalogAtom &h : effects) {
+        //     for (const Term &t: h.get_arguments()) {
+        //         if (t.is_object()) continue;
+        //         if (std::find(all_arguments.begin(), all_arguments.end(), t) == all_arguments.end()) {
+        //             all_arguments.emplace_back(t);
+        //         }
+        //     }
+        // }
         for (const DatalogAtom &b : conditions) {
             for (const Term &t: b.get_arguments()) {
                 if (t.is_object()) continue;
@@ -46,7 +52,7 @@ public:
 
 
         for (const Term &arg: all_arguments) {
-            if (arg.is_object()) continue;
+            // if (arg.is_object()) continue; // cannot happen, since we only put variables in this vector
             int term_index = arg.get_index();
             map_term_to_entry.insert(std::make_pair(term_index, table.size()));
             map_entry_to_term.push_back(term_index);

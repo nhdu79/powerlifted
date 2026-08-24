@@ -85,11 +85,6 @@ class WeightedGrounder : public Grounder {
         return order_by_outside ? fact.get_cost() + out : fact.get_cost();
     }
 
-    // Reused across join() calls so the per-call join key is built in place
-    // instead of allocating a fresh vector every time (join() is the hottest
-    // path in the grounder). Same small-buffer-optimized type as JoinHashKey.
-    utils::small_vector<int, 2> join_key_buffer;
-
     int queue_pushes;
     int atoms_produced;
     // Sums over all ground() calls of the search. Unlike the per-call
@@ -106,19 +101,16 @@ protected:
 
     void create_rule_matcher(const Datalog &lp);
 
-    void project(const RuleBase &rule, const Fact &fact, std::vector<Fact>& newfacts);
-    void join(RuleBase &rule, const Fact &fact, int position, std::vector<Fact>& newfacts);
-    void product(RuleBase &rule, const Fact &fact, int position, std::vector<Fact>& newfacts);
-
-    int aggregation_function(int i, int j) const {
-        return (heuristic_type == H_ADD) ? i + j : std::max(i, j);
-    }
+    static int agg_sum(int i, int j) { return i + j; }
+    static int agg_max(int i, int j) { return std::max(i, j); }
+    int (*aggregation_function)(int, int);
 
 public:
     WeightedGrounder(const Datalog &lp, int h, bool order_by_outside)
         : order_by_outside(order_by_outside) {
         create_rule_matcher(lp);
         heuristic_type = h;
+        aggregation_function = (heuristic_type == H_ADD) ? &agg_sum : &agg_max;
         queue_pushes = 0;
         atoms_produced = 0;
         cumulative_atoms_produced = 0;

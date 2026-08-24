@@ -25,7 +25,7 @@ int AdditiveHeuristic::compute_heuristic(const DBState &s, const Task &task) {
     // ground() itself truncates the facts to the persistent base.
 
     for (const auto &r : datalog.get_rules())
-        r->clean_up();
+        r->get_body().clean_up();
     if (h == std::numeric_limits<int>::max())
         return UNSOLVABLE_STATE;
 

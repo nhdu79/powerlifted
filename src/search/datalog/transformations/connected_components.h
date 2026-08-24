@@ -53,7 +53,7 @@ VariableSource update_source_after_component_split(std::unique_ptr<RuleBase> &or
                                                    const std::vector<int> &component,
                                                    int component_counter,
                                                    const VariableSource &source_new_split_rule) {// Update variable new_source of original rule
-    VariableSource new_source = original_rule->get_variable_source_object();
+    VariableSource new_source = original_rule->get_body().get_variable_source_object();
     int counter = 0;
     for (auto entry : new_source.get_table()) {
         /*
@@ -80,19 +80,20 @@ VariableSource update_source_after_component_split(std::unique_ptr<RuleBase> &or
 
 std::vector<std::vector<int>> get_components(std::unique_ptr<RuleBase> &rule) {
 
-    std::vector<int> variables = rule->get_variables_in_body();
+    std::vector<int> variables = rule->get_body().get_variables_in_body();
 
     std::vector<int> trivial_components;
-    Graph g(rule->get_conditions().size());
+    const std::vector<DatalogAtom> &conditions = rule->get_conditions();
+    Graph g(conditions.size());
 
     int condition_counter = 0;
-    for (const auto &conditions : rule->get_conditions()) {
-        if (conditions.is_nullary() or conditions.is_ground()) {
+    for (const auto &condition : conditions) {
+        if (condition.is_nullary() or condition.is_ground()) {
             g.add_node(condition_counter);
         } else {
             g.add_node(condition_counter);
-            for (size_t j = condition_counter + 1; j < rule->get_conditions().size(); ++j) {
-                if (rule->get_conditions()[condition_counter].share_variables(rule->get_conditions()[j])) {
+            for (size_t j = condition_counter + 1; j < conditions.size(); ++j) {
+                if (conditions[condition_counter].share_variables(conditions[j])) {
                     g.add_edge(condition_counter, j);
                     g.add_edge(j, condition_counter);
                 }
@@ -112,7 +113,7 @@ DatalogAtom Datalog::split_connected_component(std::unique_ptr<RuleBase> &origin
 
     if (component.size() == 1) {
         // Update source table
-        VariableSource new_source = original_rule->get_variable_source_object();
+        VariableSource new_source = original_rule->get_body().get_variable_source_object();
         int condition_in_component = component[0];
         int counter = 0;
         for (auto entry : new_source.get_table()) {
@@ -126,7 +127,7 @@ DatalogAtom Datalog::split_connected_component(std::unique_ptr<RuleBase> &origin
                 new_source.update_ith_entry(counter, (-1*component_counter)-1, entry.second);
             counter++;
         }
-        original_rule->update_variable_source_table(std::move(new_source));
+        original_rule->get_body().update_variable_source_table(std::move(new_source));
         return original_rule->get_conditions()[component[0]];
     }
 
@@ -146,16 +147,16 @@ DatalogAtom Datalog::split_connected_component(std::unique_ptr<RuleBase> &origin
                                                                        new_rule_conditions);
 
     DatalogAtom new_atom(new_args, idx, true);
-    std::unique_ptr<GenericRule> new_split_rule = std::make_unique<GenericRule>(0,
+    std::unique_ptr<RuleBase> new_split_rule = std::make_unique<RuleBase>(0,
                                                                           new_atom,
-                                                                          new_rule_conditions,
+                                                                          RuleBody(GenericBody(new_rule_conditions)),
                                                                           nullptr);
     VariableSource new_source = update_source_after_component_split(original_rule,
                                                                     component,
                                                                     component_counter,
-                                                                    new_split_rule->get_variable_source_object_by_ref());
+                                                                    new_split_rule->get_body().get_variable_source_object_by_ref());
 
-    original_rule->update_variable_source_table(std::move(new_source));
+    original_rule->get_body().update_variable_source_table(std::move(new_source));
     new_rules.push_back(std::move(new_split_rule));
 
     return new_atom;
@@ -176,7 +177,6 @@ void Datalog::split_into_connected_components(std::unique_ptr<RuleBase> &rule, s
         }
     }
 
-    std::vector<DatalogAtom> original_conditions = rule->get_conditions();
     std::vector<DatalogAtom> new_rule_conditions;
 
     int component_counter = 0;
@@ -184,7 +184,7 @@ void Datalog::split_into_connected_components(std::unique_ptr<RuleBase> &rule, s
         new_rule_conditions.push_back(split_connected_component(rule, component, new_rules, component_counter++));
     }
 
-    rule->set_conditions(new_rule_conditions);
+    rule->get_body().set_conditions(new_rule_conditions);
 
 }
 
