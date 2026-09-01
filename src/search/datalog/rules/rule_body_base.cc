@@ -2,6 +2,8 @@
 
 #include "../datalog.h"
 
+#include "../../utils/collections.h"
+
 #include <algorithm>
 
 using namespace std;
@@ -15,7 +17,7 @@ void RuleBodyBase::output_variable_table() const {
 void RuleBodyBase::update_conditions(DatalogAtom new_atom,
                                  const std::vector<DatalogAtom> &new_rule_conditions,
                                  const VariableSource &variable_source_new_rule,
-                                 std::vector<size_t> &&body_ids) {
+                                 std::vector<int> &&body_ids) {
 
     /*
      * TODO Change removal method and create local lookup table to simplify the decrement of
@@ -36,7 +38,7 @@ void RuleBodyBase::update_conditions(DatalogAtom new_atom,
         if (canonical_index < 0)
             canonical_index = (canonical_index*-1)-1; // Conversion to positive index
 
-        if (std::find(body_ids.begin(), body_ids.end(), canonical_index) != body_ids.end()) {
+        if (utils::contains(body_ids, canonical_index)) {
             // First, we find out which term is this entry p referring to
             int term_index = variable_source.get_term_from_table_entry_index(entry_counter);
 

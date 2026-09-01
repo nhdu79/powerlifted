@@ -23,7 +23,6 @@ namespace datalog {
  *
  */
 
-// TODO: how to represent \bot -> just an empty disjunction?
 // TODO: special handling of unsatisfiability query (\bot)?
 // TODO: implement splitting: replace \bot by \bot_s  and convert disjunction to conjunction
 //    (-> set of non-disjunctive existential rules)
@@ -33,29 +32,27 @@ namespace datalog {
 class DisjunctiveExistentialRule {
 protected:
     std::vector<DatalogAtom> effect;
-    RuleBody conditions;
+    bool bottom_rule;
+    RuleBody body;
     int index;
     bool ground_effect;
-    std::unique_ptr<Annotation> annotation;
 
     MapVariablePosition variable_position;
 
     static int next_index;
 
 public:
-    DisjunctiveExistentialRule(
-             std::vector<DatalogAtom> eff,
-             RuleBody c,
-             std::unique_ptr<Annotation> annotation)
+    DisjunctiveExistentialRule(std::vector<DatalogAtom> eff, RuleBody b)
         : effect(std::move(eff)),
-          conditions(std::move(c)),
-          index(next_index++),
-          annotation(std::move(annotation))
+          body(std::move(b)),
+          index(next_index++)
     {
         // variable map and ground status are computed from the first atom,
         // because all atoms have the same arguments
         ground_effect = true;
+        bottom_rule = true;
         if (effect.size() > 0) {
+            bottom_rule = false;
             variable_position.create_map(effect[0]);
             for (const auto &e : effect[0].get_arguments()) {
                 if (!e.is_object()) {
@@ -63,11 +60,17 @@ public:
                 }
             }
         }
-    };
+    }
+
+    DisjunctiveExistentialRule(DatalogAtom eff, RuleBody b)
+        : DisjunctiveExistentialRule(std::vector<DatalogAtom>{eff}, b)
+        { }
 
     virtual ~DisjunctiveExistentialRule() = default;
 
     bool head_is_ground() const { return ground_effect; }
+
+    bool is_bottom_rule() const { return bottom_rule; }
 
     void update_index(int i) { index = i; }
 
@@ -84,13 +87,25 @@ public:
     const std::vector<DatalogAtom> &get_effect() const { return effect; }
 
     template <typename F>
-    decltype(auto) visit_conditions(F&& f) const {
-        return std::visit(std::forward<F>(f), conditions);
+    decltype(auto) visit_body(F&& f) {
+        return std::visit(std::forward<F>(f), body);
+    }
+
+    template <typename F>
+    decltype(auto) visit_body(F&& f) const {
+        return std::visit(std::forward<F>(f), body);
     }
 
     // needed to "convert" from the std::variant RuleBody to the abstract base class RuleBodyBase
-    const RuleBodyBase &get_conditions() const {
-      return visit_conditions([](const RuleBodyBase &c) -> const RuleBodyBase& { return c; });
+    RuleBodyBase &get_body() {
+      return visit_body([](RuleBodyBase &c) -> RuleBodyBase& { return c; });
+    }
+    const RuleBodyBase &get_body() const {
+      return visit_body([](const RuleBodyBase &c) -> const RuleBodyBase& { return c; });
+    }
+
+    const std::vector<DatalogAtom> &get_conditions() const {
+      return get_body().get_conditions();
     }
 
     int get_index() const { return index; }
@@ -104,21 +119,10 @@ public:
         }
     }
 
-    std::unique_ptr<Annotation> get_annotation() { return std::move(annotation); }
-
-    bool has_annotation() const { return annotation != nullptr; }
-
-    void execute(int head, const Datalog &datalog) const
-    {
-        if (annotation) {
-            annotation->execute(head, datalog);
-        }
-    }
-
     bool is_equivalent(const DisjunctiveExistentialRule &other) const
     {
         return (get_effect_arguments() == other.get_effect_arguments()) &&
-               (get_conditions().is_equivalent(other.get_conditions()));
+               (get_conditions() == other.get_conditions());
     }
 
     // TODO: check if this is still needed

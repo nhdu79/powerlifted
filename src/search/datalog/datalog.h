@@ -43,6 +43,14 @@ class Datalog {
         return predicate_names.size();
     }
 
+    int create_new_auxiliary_predicate() {
+        int idx = get_next_auxiliary_predicate_idx();
+        std::string predicate_name = "p$" + std::to_string(idx);
+        map_new_predicates_to_idx.emplace(predicate_name, idx);
+        predicate_names.push_back(predicate_name);
+        return idx;
+    }
+
     void output_parameters(const Arguments& v) const;
 
     void get_always_reachable_rule_heads();
@@ -51,25 +59,15 @@ class Datalog {
     std::unique_ptr<RuleBase> convert_into_product_rule(const std::unique_ptr<RuleBase> &rule);
     void convert_into_join_rules(std::vector<std::unique_ptr<RuleBase>> &join_rules,
                                  std::unique_ptr<RuleBase> &rule);
-    bool is_product_rule(const std::unique_ptr<RuleBase> &rule);
 
     void split_rule(std::vector<std::unique_ptr<RuleBase>> &join_rules,
-                    std::unique_ptr<RuleBase> &rule, std::vector<size_t> body_ids);
+                    std::unique_ptr<RuleBase> &rule, std::vector<int> body_ids);
 
     void split_into_connected_components(std::unique_ptr<RuleBase> &rule, std::vector<std::unique_ptr<RuleBase>> &new_rules);
 
     void project_out_variables(std::unique_ptr<RuleBase> &rule, std::vector<std::unique_ptr<RuleBase>> &new_rules);
 
     DatalogAtom split_connected_component(std::unique_ptr<RuleBase> &original_rule, const std::vector<int> &component, std::vector<std::unique_ptr<RuleBase>> &new_rules, int component_counter);
-
-    Arguments get_conditions_arguments(const std::vector<DatalogAtom> &conditions);
-
-    Arguments get_relevant_joining_arguments_from_component(const DatalogAtom &rule_head, const std::vector<DatalogAtom> &conditions);
-
-    Arguments get_relevant_arguments_for_split(const std::unique_ptr<RuleBase> &original_rule,
-                                               const std::vector<DatalogAtom> &conditions_new_rule,
-                                               const std::vector<size_t> body_ids);
-
 
     int get_instantiation_of_variable(const Fact &rule_head, int idx) const;
 

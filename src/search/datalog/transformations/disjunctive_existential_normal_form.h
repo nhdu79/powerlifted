@@ -1,28 +1,12 @@
-#ifndef SEARCH_DATALOG_TRANSFORMATIONS_NORMAL_FORM_H_
-#define SEARCH_DATALOG_TRANSFORMATIONS_NORMAL_FORM_H_
+#ifndef SEARCH_DATALOG_TRANSFORMATIONS_DENF_H_
+#define SEARCH_DATALOG_TRANSFORMATIONS_DENF_H_
 
 #include "shared.h"
 #include "greedy_join.h"
-#include "variable_projection.h"
-
-#include "../datalog.h"
-
-#include "../rules/rule_base.h"
-#include "../rules/rule_body.h"
-
-#include "../../utils/collections.h"
-
-#include <limits>
-#include <queue>
-
-/*
- * Implement rule-splitting by Helmert (AIJ 2009).
- */
-
 
 namespace datalog {
 
-DatalogAtom Datalog::split_connected_component(std::unique_ptr<RuleBase> &original_rule, const std::vector<int> &component, std::vector<std::unique_ptr<RuleBase>> &new_rules, int component_counter) {
+DatalogAtom DisjunctiveExistentialProgram::split_connected_component(std::unique_ptr<DisjunctiveExistentialRule> &original_rule, const std::vector<int> &component, std::vector<std::unique_ptr<DisjunctiveExistentialRule>> &new_rules, int component_counter) {
 
     if (component.size() == 1) {
         return update_source_table(original_rule->get_body(), component[0], component_counter);
@@ -35,10 +19,8 @@ DatalogAtom Datalog::split_connected_component(std::unique_ptr<RuleBase> &origin
     Arguments new_args = get_relevant_joining_arguments(original_rule->get_effect_arguments(), new_rule_conditions, original_rule->get_conditions(), component, true);
 
     DatalogAtom new_atom(new_args, idx, true);
-    std::unique_ptr<RuleBase> new_split_rule = std::make_unique<RuleBase>(0,
-                                                                          new_atom,
-                                                                          RuleBody(GenericBody(new_rule_conditions)),
-                                                                          nullptr);
+    std::unique_ptr<DisjunctiveExistentialRule> new_split_rule =
+        std::make_unique<DisjunctiveExistentialRule>(new_atom, RuleBody(GenericBody(new_rule_conditions)));
     VariableSource new_source = update_source_after_component_split(original_rule->get_body().get_variable_source_object(),
                                                                     component,
                                                                     component_counter,
@@ -50,19 +32,10 @@ DatalogAtom Datalog::split_connected_component(std::unique_ptr<RuleBase> &origin
     return new_atom;
 }
 
-void Datalog::split_into_connected_components(std::unique_ptr<RuleBase> &rule, std::vector<std::unique_ptr<RuleBase>> &new_rules) {
+void DisjunctiveExistentialProgram::split_into_connected_components(std::unique_ptr<DisjunctiveExistentialRule> &rule, std::vector<std::unique_ptr<DisjunctiveExistentialRule>> &new_rules) {
     std::vector<std::vector<int>> components = get_components(rule->get_body());
 
     if (components.size() == 1) return;
-
-    // std::map<int, int> map_condition_to_component;
-    // for (size_t i = 0; i < rule->get_conditions().size(); ++i) {
-    //     for (size_t j = 0; j < components.size(); ++j) {
-    //         if (utils::contains(components[j], i)) {
-    //             map_condition_to_component[i] = j;
-    //         }
-    //     }
-    // }
 
     std::vector<DatalogAtom> new_rule_conditions;
 
@@ -76,14 +49,14 @@ void Datalog::split_into_connected_components(std::unique_ptr<RuleBase> &rule, s
 }
 
 // new_split_rule should have a body of type JoinBody
-void add_missing_entries_to_source_table(int position, std::vector<std::unique_ptr<RuleBase>> &join_rules,
+void add_missing_entries_to_source_table(int position, std::vector<std::unique_ptr<DisjunctiveExistentialRule>> &join_rules,
                                          const std::vector<DatalogAtom> &new_rule_conditions,
-                                         std::unique_ptr<RuleBase> &new_split_rule,
+                                         std::unique_ptr<DisjunctiveExistentialRule> &new_split_rule,
                                          std::vector<int> &term_indices_in_new_args) {
     int idx_condition = new_rule_conditions[position].get_predicate_index();
     VariableSource source = new_split_rule->get_body().get_variable_source_object();
     for (const auto &join_rule : join_rules) {
-        if (join_rule->get_effect().get_predicate_index() == idx_condition) {
+        if ((join_rule->get_effect().size() == 1) && (join_rule->get_effect()[0].get_predicate_index() == idx_condition)) {
             const VariableSource source_join_rule = join_rule->get_body().get_variable_source_object_by_ref();
             for (size_t entry_table_counter = 0; entry_table_counter < source_join_rule.get_table().size(); ++entry_table_counter) {
                 int entry_term = source_join_rule.get_term_from_table_entry_index(entry_table_counter);
@@ -97,27 +70,24 @@ void add_missing_entries_to_source_table(int position, std::vector<std::unique_p
     new_split_rule->get_body().update_variable_source_table(std::move(source));
 }
 
-std::unique_ptr<RuleBase> Datalog::convert_into_project_rule(const std::unique_ptr<RuleBase> &rule) {
+std::unique_ptr<DisjunctiveExistentialRule> DisjunctiveExistentialProgram::convert_into_project_rule(const std::unique_ptr<DisjunctiveExistentialRule> &rule) {
     VariableSource old_source = rule->get_body().get_variable_source_object();
-    std::unique_ptr<RuleBase> project_rule = std::make_unique<RuleBase>(rule->get_weight(), 
-                                                                            rule->get_effect(),
-                                                                            RuleBody(ProjectBody(rule->get_conditions())),
-                                                                            rule->get_annotation());
+    std::unique_ptr<DisjunctiveExistentialRule> project_rule =
+        std::make_unique<DisjunctiveExistentialRule>(rule->get_effect(), RuleBody(ProjectBody(rule->get_conditions())));
     project_rule->get_body().update_variable_source_table(std::move(old_source));
     return project_rule;
 }
 
-std::unique_ptr<RuleBase> Datalog::convert_into_product_rule(const std::unique_ptr<RuleBase> &rule) {
+std::unique_ptr<DisjunctiveExistentialRule> DisjunctiveExistentialProgram::convert_into_product_rule(const std::unique_ptr<DisjunctiveExistentialRule> &rule) {
     VariableSource old_source = rule->get_body().get_variable_source_object();
-    std::unique_ptr<RuleBase> product_rule = std::make_unique<RuleBase>(rule->get_weight(),
-                                                                           rule->get_effect(),
-                                                                           RuleBody(ProductBody(rule->get_conditions())),
-                                                                           rule->get_annotation());
+    std::unique_ptr<DisjunctiveExistentialRule> product_rule =
+        std::make_unique<DisjunctiveExistentialRule>(rule->get_effect(), RuleBody(ProductBody(rule->get_conditions())));
     product_rule->get_body().update_variable_source_table(std::move(old_source));
     return product_rule;
 }
 
-void Datalog::split_rule(std::vector<std::unique_ptr<RuleBase>> &join_rules, std::unique_ptr<RuleBase> &rule, std::vector<int> body_ids) {
+void DisjunctiveExistentialProgram::split_rule(std::vector<std::unique_ptr<DisjunctiveExistentialRule>> &join_rules,
+        std::unique_ptr<DisjunctiveExistentialRule> &rule, std::vector<int> body_ids) {
 
     std::vector<DatalogAtom> new_rule_conditions = select_conditions(rule->get_conditions(), body_ids);
 
@@ -126,10 +96,8 @@ void Datalog::split_rule(std::vector<std::unique_ptr<RuleBase>> &join_rules, std
     Arguments new_args = get_relevant_joining_arguments(rule->get_effect_arguments(), new_rule_conditions, rule->get_conditions(), body_ids, false);
 
     DatalogAtom new_atom(new_args, idx, true);
-    std::unique_ptr<RuleBase> new_split_rule = std::make_unique<RuleBase>(0,
-                                                                          new_atom,
-                                                                          RuleBody(JoinBody(new_rule_conditions)),
-                                                                          nullptr);
+    std::unique_ptr<DisjunctiveExistentialRule> new_split_rule =
+        std::make_unique<DisjunctiveExistentialRule>(new_atom, RuleBody(JoinBody(new_rule_conditions)));
 
     // We need to get the entries of the variables in the tables of the conditions that were not
     // carried to the new split rule (because these variables have been projected out).
@@ -157,14 +125,12 @@ void Datalog::split_rule(std::vector<std::unique_ptr<RuleBase>> &join_rules, std
                             new_split_rule->get_body().get_variable_source_object(),
                             std::move(body_ids));
 
-
     join_rules.push_back(std::move(new_split_rule));
 }
 
-
-
-void Datalog::convert_into_join_rules(std::vector<std::unique_ptr<RuleBase>> &join_rules,
-                                      std::unique_ptr<RuleBase> &rule) {
+void DisjunctiveExistentialProgram::convert_into_join_rules(
+        std::vector<std::unique_ptr<DisjunctiveExistentialRule>> &join_rules, std::unique_ptr<DisjunctiveExistentialRule> &rule) {
+    
     while(rule->get_conditions().size() > 2) {
         JoinCost join_cost;
         int idx1 = std::numeric_limits<int>::max();
@@ -184,19 +150,16 @@ void Datalog::convert_into_join_rules(std::vector<std::unique_ptr<RuleBase>> &jo
         std::sort(indices.begin(), indices.end());
         split_rule(join_rules, rule, indices);
     }
-    std::unique_ptr<RuleBase> join_rule = std::make_unique<RuleBase>(rule->get_weight(),
-                                                                     rule->get_effect(),
-                                                                     RuleBody(JoinBody(rule->get_conditions())),
-                                                                     rule->get_annotation());
-
+    std::unique_ptr<DisjunctiveExistentialRule> join_rule =
+        std::make_unique<DisjunctiveExistentialRule>(rule->get_effect(), RuleBody(JoinBody(rule->get_conditions())));
 
     join_rule->get_body().update_variable_source_table(rule->get_body().get_variable_source_object());
 
     join_rules.emplace_back(std::move(join_rule));
 }
 
-void Datalog::convert_rules_to_normal_form() {
-    std::vector<std::unique_ptr<RuleBase>> new_rules;
+void DisjunctiveExistentialProgram::convert_rules_to_normal_form() {
+    std::vector<std::unique_ptr<DisjunctiveExistentialRule>> new_rules;
 
     /*
      * First step, split rules into connected components.
@@ -242,13 +205,10 @@ void Datalog::convert_rules_to_normal_form() {
                 }
                 if (project_away) {
                     int idx = create_new_auxiliary_predicate();
-
                     Arguments new_args(std::move(remaining_args));
                     DatalogAtom new_atom(new_args, idx, true);
-                    std::unique_ptr<RuleBase> new_rule = std::make_unique<RuleBase>(0,
-                                                                                new_atom,
-                                                                                RuleBody(ProjectBody{condition}),
-                                                                                nullptr);
+                    std::unique_ptr<DisjunctiveExistentialRule> new_rule =
+                        std::make_unique<DisjunctiveExistentialRule>(new_atom, RuleBody(ProjectBody{condition}));
                     rule->get_body().update_single_condition_and_variable_source_table(i, new_atom);
                     new_rules.emplace_back(std::move(new_rule));
                 }
@@ -285,7 +245,7 @@ void Datalog::convert_rules_to_normal_form() {
                 new_rules.push_back(convert_into_product_rule(rule));
             }
             else {
-                std::vector<std::unique_ptr<RuleBase>> join_rules;
+                std::vector<std::unique_ptr<DisjunctiveExistentialRule>> join_rules;
                 convert_into_join_rules(join_rules, rule);
                 for (auto &join_rule : join_rules) {
                     new_rules.push_back(std::move(join_rule));
@@ -299,4 +259,4 @@ void Datalog::convert_rules_to_normal_form() {
 
 }
 
-#endif //SEARCH_DATALOG_TRANSFORMATIONS_NORMAL_FORM_H_
+#endif //SEARCH_DATALOG_TRANSFORMATIONS_DENF_H_

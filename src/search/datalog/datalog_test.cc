@@ -67,12 +67,12 @@ int main(int argc, char *argv[]) {
     // database.emplace_back(Arguments(vector<Term>{d}), 2, false);
     // database.emplace_back(Arguments(vector<Term>{e}), 2, false);
     // edge(.,.) facts
-    database.emplace_back(Arguments(vector<Term>{a, b}), 0, false);
-    database.emplace_back(Arguments(vector<Term>{a, c}), 0, false);
-    database.emplace_back(Arguments(vector<Term>{b, d}), 0, false);
-    database.emplace_back(Arguments(vector<Term>{c, d}), 0, false);
-    database.emplace_back(Arguments(vector<Term>{d, c}), 0, false);
-    database.emplace_back(Arguments(vector<Term>{d, e}), 0, false);
+    database.emplace_back(Arguments{a, b}, 0, false);
+    database.emplace_back(Arguments{a, c}, 0, false);
+    database.emplace_back(Arguments{b, d}, 0, false);
+    database.emplace_back(Arguments{c, d}, 0, false);
+    database.emplace_back(Arguments{d, c}, 0, false);
+    database.emplace_back(Arguments{d, e}, 0, false);
     // interesting(.) facts
     database.emplace_back(Arguments(vector<Term>{c}), 1, false);
     database.emplace_back(Arguments(vector<Term>{d}), 1, false);

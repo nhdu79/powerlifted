@@ -185,7 +185,7 @@ public:
 
     int get_inverse_position(int i) const { return (i + 1) % 2; }
 
-    std::string get_type_name() const override { return "JoinRule"; }
+    std::string get_type_name() const override { return "JoinBody"; }
 
     /*
     * Compute the new facts produced by a join rule.

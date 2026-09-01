@@ -37,7 +37,10 @@ set(DATALOG_SOURCES
         datalog/rule_matcher.cc
         datalog/rules/rule_base.cc
         datalog/rules/rule_body_base.cc
-        datalog/rules/disjunctive_existential_rule.cc)
+        datalog/rules/disjunctive_existential_rule.cc
+        datalog/disjunctive_existential_program.cc
+        datalog/transformations/shared.cc
+        datalog/transformations/greedy_join.cc)
 
 set(HEURISTIC_SOURCES
         heuristics/add_heuristic.cc

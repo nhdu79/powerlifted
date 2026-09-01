@@ -11,6 +11,12 @@
 #include <vector>
 
 namespace utils {
+
+template<class C, class U>
+bool contains(const C &con, const U &obj) {
+    return std::find(con.begin(), con.end(), obj) != con.end();
+}
+
 template<class T>
 extern void sort_unique(std::vector<T> &vec) {
     std::sort(vec.begin(), vec.end());

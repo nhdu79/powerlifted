@@ -3,6 +3,8 @@
 
 #include "../datalog_atom.h"
 
+#include "../../utils/collections.h"
+
 #include <unordered_map>
 #include <vector>
 
@@ -36,7 +38,7 @@ public:
         // for (const DatalogAtom &h : effects) {
         //     for (const Term &t: h.get_arguments()) {
         //         if (t.is_object()) continue;
-        //         if (std::find(all_arguments.begin(), all_arguments.end(), t) == all_arguments.end()) {
+        //         if (!utils::contains(all_arguments, t)) {
         //             all_arguments.emplace_back(t);
         //         }
         //     }
@@ -44,7 +46,7 @@ public:
         for (const DatalogAtom &b : conditions) {
             for (const Term &t: b.get_arguments()) {
                 if (t.is_object()) continue;
-                if (std::find(all_arguments.begin(), all_arguments.end(), t) == all_arguments.end()) {
+                if (!utils::contains(all_arguments, t)) {
                     all_arguments.emplace_back(t);
                 }
             }

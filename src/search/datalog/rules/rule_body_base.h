@@ -79,7 +79,7 @@ public:
     void update_conditions(DatalogAtom new_atom,
                            const std::vector<DatalogAtom> &new_rule_conditions,
                            const VariableSource &variable_source_new_rule,
-                           std::vector<size_t> &&body_ids);
+                           std::vector<int> &&body_ids);
 
     void update_single_condition_and_variable_source_table(size_t j, DatalogAtom atom);
 

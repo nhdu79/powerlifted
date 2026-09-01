@@ -1,16 +1,7 @@
 #ifndef SEARCH_DATALOG_TRANSFORMATIONS_VARIABLE_PROJECTION_H_
 #define SEARCH_DATALOG_TRANSFORMATIONS_VARIABLE_PROJECTION_H_
 
-#include "connected_components.h"
-#include "greedy_join.h"
-
-
 #include "../datalog.h"
-
-#include "../rules/rule_base.h"
-#include "../rules/generic_body.h"
-#include "../rules/join.h"
-#include "../rules/product.h"
 #include "../rules/project.h"
 
 #include <limits>
@@ -58,17 +49,16 @@ void Datalog::project_out_variables(std::unique_ptr<RuleBase> &rule,
         for (const auto &arg : rule->get_body().get_condition_arguments(i)) {
             if (arg.is_object()) continue;
             int index = arg.get_index();
-            if ((variable_counter[index] > 1) or std::find(relevant_variables.begin(), relevant_variables.end(), index) != relevant_variables.end())
+            if ((variable_counter[index] > 1) or utils::contains(relevant_variables, index)) {
                 relevant_variables_for_condition.push_back(index);
+            }
             else {
                 project_out = true;
             }
         }
         if (project_out) {
-            std::string predicate_name = "p$" + std::to_string(predicate_names.size());
-            int idx = get_next_auxiliary_predicate_idx();
-            map_new_predicates_to_idx.emplace(predicate_name, idx);
-            predicate_names.push_back(predicate_name);
+
+            int idx = create_new_auxiliary_predicate();
 
             Arguments new_args;
             for (auto v : relevant_variables_for_condition) {

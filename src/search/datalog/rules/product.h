@@ -118,7 +118,7 @@ public:
     }
 
     std::string get_type_name() const override {
-        return "ProductRule";
+        return "ProductBody";
     }
 
     /*
