@@ -23,21 +23,16 @@ namespace datalog {
  *
  */
 
-// TODO: special handling of unsatisfiability query (\bot)?
-// TODO: implement splitting: replace \bot by \bot_s  and convert disjunction to conjunction
-//    (-> set of non-disjunctive existential rules)
-//    -> implement (non-disjunctive) c-chase
-// TODO: implement choice function and the disjunctive c-chase (also replace \bot by \bot_s, but keep disjunctions)
-
 class DisjunctiveExistentialRule {
 protected:
     std::vector<DatalogAtom> effect;
-    bool bottom_rule;
     RuleBody body;
     int index;
-    bool ground_effect;
 
     MapVariablePosition variable_position;
+    // map every position of every head atom to a constant
+    std::vector<std::vector<int>> skolem_mapping;
+    bool existential_variables;
 
     static int next_index;
 
@@ -47,18 +42,27 @@ public:
           body(std::move(b)),
           index(next_index++)
     {
-        // variable map and ground status are computed from the first atom,
-        // because all atoms have the same arguments
-        ground_effect = true;
-        bottom_rule = true;
+        existential_variables = false;
         if (effect.size() > 0) {
-            bottom_rule = false;
+            // variable map is computed from the first atom, because all atoms have the same arguments
             variable_position.create_map(effect[0]);
-            for (const auto &e : effect[0].get_arguments()) {
-                if (!e.is_object()) {
-                    ground_effect = false;
+            std::vector<Term> body_terms;
+            for (const DatalogAtom &cond : ((RuleBodyBase &)body).get_conditions()) {
+                for(const Term &t : cond.get_arguments()) {
+                    body_terms.emplace_back(t);
                 }
             }
+            for (const Term &t : effect[0].get_arguments()) {
+                if (!t.is_object()) {
+                    if (!utils::contains(body_terms, t)) {
+                        existential_variables = true;
+                    }
+                }
+            }
+        }
+        skolem_mapping.resize(effect.size());
+        for (size_t atom_idx = 0; atom_idx < effect.size(); ++atom_idx) {
+            skolem_mapping[atom_idx].resize(effect[atom_idx].get_arguments().size());
         }
     }
 
@@ -68,21 +72,7 @@ public:
 
     virtual ~DisjunctiveExistentialRule() = default;
 
-    bool head_is_ground() const { return ground_effect; }
-
-    bool is_bottom_rule() const { return bottom_rule; }
-
     void update_index(int i) { index = i; }
-
-    // TODO: check if this is needed
-    void recreate_map_variable_position(const std::vector<DatalogAtom> &eff)
-    {
-        if (eff.size() > 0) {
-            variable_position.create_map(eff[0]);
-        } else {
-            variable_position.clear();
-        }
-    }
 
     const std::vector<DatalogAtom> &get_effect() const { return effect; }
 
@@ -119,18 +109,18 @@ public:
         }
     }
 
-    bool is_equivalent(const DisjunctiveExistentialRule &other) const
-    {
-        return (get_effect_arguments() == other.get_effect_arguments()) &&
-               (get_conditions() == other.get_conditions());
+    const MapVariablePosition get_variable_position_map() const { return variable_position; }
+
+    bool has_existential_variables() const { return existential_variables; }
+
+    int get_skolem_constant(int atom_idx, int position) const {
+        return skolem_mapping[atom_idx][position];
     }
 
-    // TODO: check if this is still needed
-    void update_effect_arguments(std::vector<Term> &terms) {
-        for (DatalogAtom atom : effect) {
-            atom.update_arguments(terms);
-        }
+    void set_skolem_mapping(int atom_idx, int position, int object) {
+        skolem_mapping[atom_idx][position] = object;
     }
+
 };
 
 }  // namespace datalog

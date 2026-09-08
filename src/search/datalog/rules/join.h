@@ -257,7 +257,6 @@ public:
                 std::swap(achiever_first, achiever_second);
             }
 
-            // TODO: fix: specify aggregation_function as argument to instantiate! (for all three implementations)
             int cost = aggregation_function(fact.get_cost(), already_achieved_fact.get_cost());
             // rule index and cost for achievers have to be filled in by the calling method
             construct_fact(std::move(new_arguments),

@@ -38,7 +38,6 @@ protected:
 
     VariableSource variable_source;
 
-    // TODO: check if this is still needed
     int get_position_of_atom_in_same_body_rule(int i) const
     {
         return variable_source.get_position_of_atom_in_same_body_rule(i);
@@ -109,7 +108,6 @@ public:
 
     virtual int get_type() const = 0;
 
-    // TODO: check where this is used
     virtual std::string get_type_name() const { return "RuleBodyBase"; }
 
     void set_specific_condition(size_t i, DatalogAtom atom);

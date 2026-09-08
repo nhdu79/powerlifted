@@ -40,7 +40,8 @@ set(DATALOG_SOURCES
         datalog/rules/disjunctive_existential_rule.cc
         datalog/disjunctive_existential_program.cc
         datalog/transformations/shared.cc
-        datalog/transformations/greedy_join.cc)
+        datalog/transformations/greedy_join.cc
+        datalog/grounder/c_chase.cc)
 
 set(HEURISTIC_SOURCES
         heuristics/add_heuristic.cc
@@ -111,12 +112,18 @@ add_executable(datalog_test
         ${DATALOG_SOURCES}
         ${UTIL_SOURCES})
 
+add_executable(c_chase_test
+        datalog/c_chase_test.cc
+        ${CORE_SOURCES}
+        ${DATALOG_SOURCES}
+        ${UTIL_SOURCES})
+
 # --- Compiler settings ---
 
 add_library(project_options INTERFACE)
 
 target_compile_features(project_options INTERFACE cxx_std_17)
-set_target_properties(search datalog_test PROPERTIES
+set_target_properties(search datalog_test c_chase_test PROPERTIES
         CXX_STANDARD_REQUIRED ON
         CXX_EXTENSIONS OFF)
 
@@ -134,6 +141,7 @@ endif()
 
 target_link_libraries(search PRIVATE project_options)
 target_link_libraries(datalog_test PRIVATE project_options)
+target_link_libraries(c_chase_test PRIVATE project_options)
 
 # --- Build-type specific flags ---
 

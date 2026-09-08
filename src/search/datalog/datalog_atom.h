@@ -87,6 +87,8 @@ public:
         return !(lhs.arguments!=rhs.arguments);
     }
 
+    void set_term_to_object(int i, int j) { arguments.set_term_to_object(i, j); }
+
     void update_arguments(std::vector<Term> &terms) {
         arguments = Arguments(std::move(terms));
     }

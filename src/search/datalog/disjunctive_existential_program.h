@@ -15,8 +15,12 @@ class DisjunctiveExistentialProgram {
     std::vector<std::unique_ptr<DisjunctiveExistentialRule>> rules;
     std::vector<std::string> predicate_names;
     std::vector<std::string> object_names;
-    std::unordered_map<std::string, int> map_new_predicates_to_idx;
 
+    int num_initial_predicates;
+    int num_initial_objects;
+
+    std::vector<int> distances_to_bottom;
+    
     int get_next_auxiliary_predicate_idx() {
         return predicate_names.size();
     }
@@ -24,8 +28,18 @@ class DisjunctiveExistentialProgram {
     int create_new_auxiliary_predicate() {
         int idx = get_next_auxiliary_predicate_idx();
         std::string predicate_name = "p$" + std::to_string(idx);
-        map_new_predicates_to_idx.emplace(predicate_name, idx);
         predicate_names.push_back(predicate_name);
+        return idx;
+    }
+
+    int get_next_skolem_constant_idx() {
+        return object_names.size();
+    }
+
+    int create_new_skolem_constant() {
+        int idx = get_next_skolem_constant_idx();
+        std::string object_name = "c$" + std::to_string(idx);
+        object_names.push_back(object_name);
         return idx;
     }
 
@@ -56,7 +70,15 @@ public:
         return rules;
     }
 
+    const std::vector<int> get_distances_to_bottom() const {
+        return distances_to_bottom;
+    }
+
     void convert_rules_to_normal_form();
+
+    void generate_skolem_constants();
+
+    void compute_distances_to_bottom();
 
     void output_rule(const DisjunctiveExistentialRule &rule) const;
 
@@ -64,7 +86,7 @@ public:
         for (const auto &rule : rules) output_rule(*rule);
     }
 
-    const std::vector<Fact> &get_facts();
+    const std::vector<Fact> &get_facts() const;
 
     const Fact &get_fact_by_index(int i) const {
         return facts[i];
@@ -90,6 +112,19 @@ public:
 
     void reset_facts() {
         facts.clear();
+    }
+
+    bool is_auxiliary_fact(const Fact &f) const {
+        if (f.get_predicate_index() >= num_initial_predicates) {
+            return true;
+        }
+        for (const Term &t : f.get_arguments()) {
+            assert(t.is_object());
+            if (t.get_index() >= num_initial_objects) {
+                return true;
+            }
+        }
+        return false;
     }
 
     void print_statistics() {

@@ -1,0 +1,96 @@
+#ifndef GROUNDER_C_CHASE_H_
+#define GROUNDER_C_CHASE_H_
+
+#include "../disjunctive_existential_program.h"
+#include "../rule_matcher.h"
+
+#include "../../algorithms/priority_queues.h"
+
+
+namespace datalog {
+
+enum CChaseMode { SPLIT, DISJUNCTIVE }; // SPLIT = U_2, DISJUNCTIVE = U_3
+
+class CChase {
+
+    DisjunctiveExistentialProgram &program;
+
+    // negated facts derived from a previous call to compute a lower bound via
+    // shifted disjunctive datalog rules (used for choice_function, assumes that
+    // the facts use the non-negated predicate indices).
+    std::vector<Fact> negated_lower_bound_facts;
+
+    std::queue<int> q;
+
+    // The state facts are the first facts created each grounding, so they
+    // occupy the contiguous fact-index range [0, num_initial_facts). Testing
+    // "is this an initial fact" is therefore a single comparison — no need for a
+    // per-evaluation hash set of their indices.
+    int num_initial_facts;
+
+    // This is a member instead of a chase() local so its capacity survives across
+    // calls (state facts + derived (semi-instantiated) atoms only).
+    // We use the Fact class here instead of DatalogAtom since Facts don't
+    // increase the Fact::next_fact_index by default (and don't check their argument
+    // list for variables).
+    phmap::flat_hash_set<Fact> reached_atoms;
+
+    int queue_pushes;
+    int atoms_produced;
+    // Sums over all ground() calls of the search. Unlike the per-call
+    // counters, nothing resets these, so the planner can report one total at
+    // the end of the search.
+    unsigned long long cumulative_atoms_produced;
+    unsigned long long cumulative_queue_pushes;
+    int total_number_of_facts;
+
+    void add_fact(const DisjunctiveExistentialRule &rule, int head_index, Arguments &instantiation);
+
+    int choice_function(const std::vector<DatalogAtom> &effect, const Arguments &instantiation);
+
+protected:
+
+    RuleMatcher rule_matcher;
+
+    void create_rule_matcher();
+
+public:
+    CChase(DisjunctiveExistentialProgram &p, std::vector<Fact> &nlbf) :
+        program(p),
+        negated_lower_bound_facts(std::move(nlbf))
+    {
+        create_rule_matcher();
+        queue_pushes = 0;
+        atoms_produced = 0;
+        cumulative_atoms_produced = 0;
+        cumulative_queue_pushes = 0;
+        total_number_of_facts = 0;
+    }
+
+    ~CChase() = default;
+
+    bool chase(std::vector<Fact> &state_facts, CChaseMode mode, bool stop_on_bot);
+    
+    const std::vector<Fact> upper_bound_query(std::vector<Fact> &state_facts);
+
+    bool upper_bound_bottom_query(std::vector<Fact> &state_facts);
+
+    void print_statistics() {
+        std::cout << program.get_number_of_facts() << " final number of facts" << std::endl;
+        std::cout << atoms_produced << " total atoms produced" << std::endl;
+        std::cout << queue_pushes << " total queue pushes" << std::endl;
+    }
+
+    unsigned long long get_cumulative_atoms_produced() const {
+        return cumulative_atoms_produced;
+    }
+
+    unsigned long long get_cumulative_queue_pushes() const {
+        return cumulative_queue_pushes;
+    }
+
+};
+
+}
+
+#endif //GROUNDER_GROUNDERS_FAST_DOWNWARD_GROUNDER_H_

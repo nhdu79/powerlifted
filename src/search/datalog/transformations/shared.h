@@ -5,6 +5,7 @@
 #include "../../utils/collections.h"
 #include "../rules/variable_source.h"
 #include "../rules/rule_body_base.h"
+#include "../../algorithms/priority_queues.h"
 
 #include <set>
 #include <vector>
@@ -32,6 +33,7 @@ class Graph {
 public:
 
     Graph(int max) {
+        // TODO: ???
         edges.resize(max);
         nodes.resize(0);
     }
@@ -53,6 +55,27 @@ public:
             }
         }
         return components;
+    }
+
+    std::vector<int> dijkstra(int start) {
+        std::vector<int> dist(nodes.size(), std::numeric_limits<int>::max());
+        dist[start] = 0;
+        priority_queues::AdaptiveQueue<int> q;
+        q.push(0, start);
+
+        while(!q.empty()) {
+            auto [d, u] = q.pop();
+            if (d > dist[u]) continue;
+            for (int v : edges[u]) {
+                int nd = d + 1;
+                if (nd < dist[v]) {
+                    dist[v] = nd;
+                    q.push(nd, v);
+                }
+            }
+        }
+
+        return dist;
     }
 
 };

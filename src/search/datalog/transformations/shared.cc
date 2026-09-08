@@ -89,8 +89,6 @@ VariableSource update_source_after_component_split(VariableSource source_origina
 
 std::vector<std::vector<int>> get_components(RuleBodyBase &body) {
 
-    std::vector<int> variables = body.get_variables_in_body();
-
     const std::vector<DatalogAtom> &conditions = body.get_conditions();
     Graph g(conditions.size());
 
@@ -100,7 +98,7 @@ std::vector<std::vector<int>> get_components(RuleBodyBase &body) {
             g.add_node(condition_counter);
         } else {
             g.add_node(condition_counter);
-            for (size_t j = condition_counter + 1; j < conditions.size(); ++j) {
+            for (int j = condition_counter + 1; j < conditions.size(); ++j) {
                 if (conditions[condition_counter].share_variables(conditions[j])) {
                     g.add_edge(condition_counter, j);
                     g.add_edge(j, condition_counter);

@@ -39,8 +39,6 @@ public:
         }
     };
 
-    // TODO: add a clean_up method to call the one in RuleBodyBase?
-
     bool head_is_ground() const { return ground_effect; }
 
     void update_index(int i) { index = i; }
@@ -101,8 +99,6 @@ public:
     }
 
     void update_effect_arguments(std::vector<Term> &terms) { effect.update_arguments(terms); }
-
-    // TODO: add methods for easier access to the body atoms?
 
 };
 

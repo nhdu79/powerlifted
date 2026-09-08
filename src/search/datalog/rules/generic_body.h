@@ -30,10 +30,9 @@ public:
     }
 
     std::string get_type_name() const override {
-        return "GenericRule";
+        return "GenericBody";
     }
 
-    // TODO: check that this doesn't break anything
     template <typename C>
     void instantiate(Arguments new_arguments_persistent,
         MapVariablePosition variable_position,
