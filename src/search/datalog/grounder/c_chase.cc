@@ -212,7 +212,7 @@ bool CChase::chase(std::vector<Fact> &state_facts, CChaseMode mode, bool stop_on
                                     for (int atom_idx = 0; atom_idx < rule.get_effect().size(); ++atom_idx) {
                                         add_fact(rule, atom_idx, args);
                                     }
-                                } else { // mode == DISJUNCTIVE
+                                } else { // mode == CHOICE
                                     int chosen_atom_idx = choice_function(rule.get_effect(), args);
                                     add_fact(rule, chosen_atom_idx, args);
                                 }
@@ -245,7 +245,7 @@ const std::vector<Fact> CChase::upper_bound_query(std::vector<Fact> &state_facts
     }
 
     // then run U_3, can terminate early if \bot is derived
-    if (chase(state_facts, DISJUNCTIVE, true)) {
+    if (chase(state_facts, CHOICE, true)) {
         // if \bot is derived, return only U_2's answers
         return u2_answers;
     }
@@ -266,7 +266,7 @@ const std::vector<Fact> CChase::upper_bound_query(std::vector<Fact> &state_facts
 }
 
 bool CChase::upper_bound_bottom_query(std::vector<Fact> &state_facts) {
-    return chase(state_facts, SPLIT, true) && chase(state_facts, DISJUNCTIVE, true);
+    return chase(state_facts, SPLIT, true) && chase(state_facts, CHOICE, true);
 }
 
 

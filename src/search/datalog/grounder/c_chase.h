@@ -9,7 +9,7 @@
 
 namespace datalog {
 
-enum CChaseMode { SPLIT, DISJUNCTIVE }; // SPLIT = U_2, DISJUNCTIVE = U_3
+enum CChaseMode { SPLIT, CHOICE }; // SPLIT = U_2, CHOICE = U_3
 
 class CChase {
 
