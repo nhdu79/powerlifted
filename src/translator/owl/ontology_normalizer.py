@@ -1,5 +1,5 @@
 """
-Normalize an ontology towards the 13 axiom forms (O1)-(O13) of Table 1,
+Normalize an ontology towards the 14 axiom forms (O1)-(O14) of Table 1,
 page 7, Zhou et al. 2015 ("Pay-as-you-go ABox Reasoning"), and classify
 each axiom into its Table 1 bucket.
 
@@ -18,36 +18,10 @@ Table 1 (n, m > 0; A, B atomic concepts or ⊤; R, S, T atomic roles):
     O11   A                   ⊑ ≤m R.B
     O12   A                   ⊑ {a}
     O13   ⊤                   ⊑ ∀R.A
+    O14   A                   ⊑ ≥m R.B
 
-"R atomic" is strict — never an inverse role, except O7's explicit S⁻ on the
-right. owl:FunctionalProperty(P) / owl:InverseFunctionalProperty(P) are the
-O11 special case ⊤ ⊑ ≤1 P.⊤ / ⊤ ⊑ ≤1 P⁻.⊤.
-
-_normalize_complex_concept_LHS / _RHS eliminate non-atomic conjuncts/disjuncts
-from a conjunctive LHS / disjunctive RHS via a fresh atomic concept, defined
-by Ci ⊑ A_Ci (LHS) or A'_{C'j} ⊑ C'j (RHS) — direction flips by polarity;
-either way one-directional keeps the rewrite equivalence-preserving.
-_normalize_inverse_existential_concept and
-_normalize_inverse_max_cardinality_concept eliminate ∃R⁻.X and ≤nR⁻.X
-similarly, via a fresh atomic role rather than a fresh concept — see each's
-own docstring for its defining-axiom direction; these are NOT
-interchangeable between the two functions, or between a function's own
-sub/sup cases, despite the superficial similarity.
-
-_normalize_inverse_role_LHS replaces an inverse role R⁻ on a role axiom's
-LHS (bare, or as a chain member) with a fresh atomic role R', adding
-R ⊑ R'⁻ (the O7-shaped equivalent of R⁻ ⊑ R'). _normalize_role_chain_length
-then binarizes a (now all-atomic) role chain longer than 2 via fresh atomic
-roles (O8 covers only R∘S⊑T).
-
-An axiom not shaped like one of O1-O13 after normalization is classified
-UNCLASSIFIED rather than dropped or mis-bucketed — this includes a
-cardinality restriction as a ConceptInclusion's sub (≤nR.B ⊑ A / ≤nR⁻.B
-⊑ A), which has no Table 1 row at all (unlike ∃R.A, which has both O3 and
-O10) since it's inherently non-Horn there. normalize_ontology itself never
-raises; call ensure_fully_supported afterwards to abort (with
-UnsupportedConstructError) once an ontology is actually about to be used,
-e.g. for planning.
+An axiom not shaped like one of O1-O14 after normalization is classified
+UNCLASSIFIED.
 """
 
 from __future__ import annotations
@@ -67,10 +41,12 @@ from owl.expressions import (
     ConceptExpression,
     IntersectionConcept,
     InverseMaxCardinalityConcept,
+    InverseMinCardinalityConcept,
     InverseQualifiedExistentialConcept,
     InverseRole,
     InverseUniversalConcept,
     MaxCardinalityConcept,
+    MinCardinalityConcept,
     NegatedConcept,
     NegatedRole,
     Nominal,
@@ -100,9 +76,10 @@ O10 = "O10"
 O11 = "O11"
 O12 = "O12"
 O13 = "O13"
+O14 = "O14"
 UNCLASSIFIED = "unclassified"
 
-TABLE1_LABELS = (O1, O2, O3, O4, O5, O6, O7, O8, O9, O10, O11, O12, O13)
+TABLE1_LABELS = (O1, O2, O3, O4, O5, O6, O7, O8, O9, O10, O11, O12, O13, O14)
 
 
 def normalize_ontology(ontology: Ontology) -> None:
@@ -111,8 +88,8 @@ def normalize_ontology(ontology: Ontology) -> None:
     into ontology.axiom_types: rewrite negative concept inclusions
     (X1 ⊑ ¬X2 → X1 ⊓ X2 ⊑ ⊥), eliminate inverse roles from role-axiom LHSs,
     binarize role chains longer than 2, then eliminate complex conjuncts/
-    disjuncts, ∃R⁻.X, and ≤nR⁻.X to a fixpoint, then classify. Never raises
-    — see ensure_fully_supported to check the result before using it.
+    disjuncts, ∃R⁻.X, ≤nR⁻.X, and ≥nR⁻.X to a fixpoint, then classify. Never
+    raises — see ensure_fully_supported to check the result before using it.
     """
     _normalize_negative_concept_inclusions(ontology)
     _normalize_inverse_role_LHS(ontology)
@@ -330,66 +307,280 @@ def _normalize_inverse_existential_concept(ontology: Ontology) -> None:
 
 # ---------------------------------------------------------------------------
 # _normalize_inverse_max_cardinality_concept: eliminate ≤nR⁻.X from a
-# ConceptInclusion's sup
+# ConceptInclusion's sub or sup
 # ---------------------------------------------------------------------------
 
 
 def _normalize_inverse_max_cardinality_concept(ontology: Ontology) -> None:
     """Eliminate InverseMaxCardinalityConcept (≤nR⁻.X) from a
-    ConceptInclusion's sup — O11 reads ≤mR.B with R atomic (Table 1 has no
-    row for a cardinality restriction on the sub side, so that's not
-    handled here). Per distinct R, introduces a fresh atomic role R' (same
-    _fresh_role_for naming as _normalize_inverse_existential_concept,
-    registered with its negation) and rewrites:
+    ConceptInclusion's sub or sup. Per distinct R, introduces a fresh
+    atomic role R' (same _fresh_role_for naming as
+    _normalize_inverse_existential_concept, registered with its negation)
+    and rewrites:
 
+        ≤nR⁻.A ⊑ B  →  R' ⊑ R⁻  (O7)  +  ≤nR'.A ⊑ B   (still UNCLASSIFIED —
+                                            Table 1 has no row for a
+                                            cardinality restriction on the
+                                            sub side; left for a later pass)
         A ⊑ ≤nR⁻.B  →  R ⊑ R'⁻  (O7)  +  A ⊑ ≤nR'.B   (O11)
 
     Unlike ∃ (monotone increasing in the role), ≤n is monotone decreasing,
-    so — despite R⁻ sitting in the sup position, same as
-    _normalize_inverse_existential_concept's ∃-sup case — this needs the
-    R ⊑ R'⁻ direction, not that case's R' ⊑ R⁻ (verified by finite-model
-    check; the two functions are not interchangeable by structural
-    position alone)."""
+    so the directions are swapped relative to
+    _normalize_inverse_existential_concept: sup uses R ⊑ R'⁻ (that
+    function's sub-case direction), sub uses R' ⊑ R⁻ (its sup-case
+    direction) — verified by finite-model check."""
     seen_ids = {ax.id for ax in ontology.axioms}
     new_axioms = []
 
-    for ax in ontology.axioms:
-        if not (
-            isinstance(ax, ConceptInclusion)
-            and isinstance(ax.sup, InverseMaxCardinalityConcept)
-        ):
-            new_axioms.append(ax)
-            continue
-
-        sup = ax.sup
-        fresh = _fresh_role_for(InverseRole(sup.role))
+    def role_for(r: AtomicRole) -> AtomicRole:
+        fresh = _fresh_role_for(InverseRole(r))
         if fresh.id not in ontology.roles:
             ontology.roles[fresh.id] = fresh
             ontology.roles[NegatedRole(fresh).id] = NegatedRole(fresh)
+        return fresh
 
-        defining_axiom = RoleInclusion(sup.role, InverseRole(fresh))
+    def add_defining(defining_axiom: RoleInclusion) -> None:
         if defining_axiom.id not in seen_ids:
             seen_ids.add(defining_axiom.id)
             new_axioms.append(defining_axiom)
 
-        new_axioms.append(
-            ConceptInclusion(ax.sub, MaxCardinalityConcept(fresh, sup.n, sup.concept))
-        )
+    for ax in ontology.axioms:
+        if not isinstance(ax, ConceptInclusion):
+            new_axioms.append(ax)
+            continue
+
+        sub, sup = ax.sub, ax.sup
+        changed = False
+
+        if isinstance(sub, InverseMaxCardinalityConcept):
+            fresh = role_for(sub.role)
+            add_defining(RoleInclusion(fresh, InverseRole(sub.role)))
+            sub = MaxCardinalityConcept(fresh, sub.n, sub.concept)
+            changed = True
+
+        if isinstance(sup, InverseMaxCardinalityConcept):
+            fresh = role_for(sup.role)
+            add_defining(RoleInclusion(sup.role, InverseRole(fresh)))
+            sup = MaxCardinalityConcept(fresh, sup.n, sup.concept)
+            changed = True
+
+        new_axioms.append(ConceptInclusion(sub, sup) if changed else ax)
+
+    ontology.axioms = new_axioms
+
+
+# ---------------------------------------------------------------------------
+# _normalize_inverse_min_cardinality_concept: eliminate ≥nR⁻.X from a
+# ConceptInclusion's sub or sup
+# ---------------------------------------------------------------------------
+
+
+def _normalize_inverse_min_cardinality_concept(ontology: Ontology) -> None:
+    """Eliminate InverseMinCardinalityConcept (≥nR⁻.X) from a
+    ConceptInclusion's sub or sup. Per distinct R, introduces a fresh
+    atomic role R' (same _fresh_role_for naming as
+    _normalize_inverse_max_cardinality_concept /
+    _normalize_inverse_existential_concept, registered with its negation)
+    and rewrites:
+
+        ≥nR⁻.A ⊑ B  →  R ⊑ R'⁻  (O7)  +  ≥nR'.A ⊑ B   (still UNCLASSIFIED —
+                                            Table 1 has no row for a
+                                            cardinality restriction on the
+                                            sub side; left for a later pass)
+        A ⊑ ≥nR⁻.B  →  R' ⊑ R⁻  (O7)  +  A ⊑ ≥nR'.B   (O14)
+
+    Unlike ≤n (anti-monotone — see
+    _normalize_inverse_max_cardinality_concept), ≥n is monotone increasing,
+    same as ∃, so this matches _normalize_inverse_existential_concept's
+    direction split exactly (sub: R ⊑ R'⁻; sup: R' ⊑ R⁻) — both opposite
+    of the max-cardinality function."""
+    seen_ids = {ax.id for ax in ontology.axioms}
+    new_axioms = []
+
+    def role_for(r: AtomicRole) -> AtomicRole:
+        fresh = _fresh_role_for(InverseRole(r))
+        if fresh.id not in ontology.roles:
+            ontology.roles[fresh.id] = fresh
+            ontology.roles[NegatedRole(fresh).id] = NegatedRole(fresh)
+        return fresh
+
+    def add_defining(defining_axiom: RoleInclusion) -> None:
+        if defining_axiom.id not in seen_ids:
+            seen_ids.add(defining_axiom.id)
+            new_axioms.append(defining_axiom)
+
+    for ax in ontology.axioms:
+        if not isinstance(ax, ConceptInclusion):
+            new_axioms.append(ax)
+            continue
+
+        sub, sup = ax.sub, ax.sup
+        changed = False
+
+        if isinstance(sub, InverseMinCardinalityConcept):
+            fresh = role_for(sub.role)
+            add_defining(RoleInclusion(sub.role, InverseRole(fresh)))
+            sub = MinCardinalityConcept(fresh, sub.n, sub.concept)
+            changed = True
+
+        if isinstance(sup, InverseMinCardinalityConcept):
+            fresh = role_for(sup.role)
+            add_defining(RoleInclusion(fresh, InverseRole(sup.role)))
+            sup = MinCardinalityConcept(fresh, sup.n, sup.concept)
+            changed = True
+
+        new_axioms.append(ConceptInclusion(sub, sup) if changed else ax)
+
+    ontology.axioms = new_axioms
+
+
+# ---------------------------------------------------------------------------
+# _normalize_min_cardinality_LHS: rewrite ≥nR.A ⊑ B (R, A, B atomic) via the
+# contrapositive, into forms already covered by O1/O2/O11
+# ---------------------------------------------------------------------------
+
+_COMPLEMENT_CONCEPT_PREFIX = "comp"
+
+
+def _fresh_complement_concept_for(concept: AtomicConcept) -> AtomicConcept:
+    """Fresh atomic concept B' standing in for ¬B, deterministic on B's
+    .id. Uses a distinct prefix from _fresh_concept_for's def_ family so an
+    unrelated concept can't collide with some B's complement by .id."""
+    return AtomicConcept(f"{_COMPLEMENT_CONCEPT_PREFIX}_{concept.id}")
+
+
+def _normalize_min_cardinality_LHS(ontology: Ontology) -> None:
+    """Rewrite ≥nR.A ⊑ B (R, A, B atomic — Table 1 has no row for a
+    cardinality restriction on the sub side) via its contrapositive into
+    three already-classifiable axioms, replacing the original:
+
+        B' ⊑ ≤(n-1)R.A   (O11)
+        B ⊓ B' ⊑ ⊥        (O1)
+        ⊤ ⊑ B ⊔ B'        (O2)
+
+    B' is fresh per distinct B (shared across axioms via
+    _fresh_complement_concept_for), forced to be exactly ¬B by the
+    disjointness + covering pair together — an exact equivalence.
+
+    n=0 is a degenerate special case, not the general contrapositive above:
+    "≥0R.A" holds vacuously for every individual (a count is always >= 0),
+    so ≥0R.A ⊑ B is just ⊤ ⊑ B (O2) — R and A drop out entirely, no fresh
+    concept needed. OWL2 allows minQualifiedCardinality="0", so this does
+    come up."""
+    seen_ids = {ax.id for ax in ontology.axioms}
+    new_axioms = []
+
+    def complement_for(concept: AtomicConcept) -> AtomicConcept:
+        comp = _fresh_complement_concept_for(concept)
+        if comp.id not in ontology.concepts:
+            ontology.concepts[comp.id] = comp
+            ontology.concepts[NegatedConcept(comp).id] = NegatedConcept(comp)
+        return comp
+
+    def add(new_axiom) -> None:
+        if new_axiom.id not in seen_ids:
+            seen_ids.add(new_axiom.id)
+            new_axioms.append(new_axiom)
+
+    for ax in ontology.axioms:
+        if not (
+            isinstance(ax, ConceptInclusion)
+            and isinstance(ax.sub, MinCardinalityConcept)
+            and _is_atomic_role(ax.sub.role)
+            and _is_atomic_or_thing(ax.sub.concept)
+            and _is_atomic_or_thing(ax.sup)
+        ):
+            new_axioms.append(ax)
+            continue
+
+        role, n, a, b = ax.sub.role, ax.sub.n, ax.sub.concept, ax.sup
+
+        if n == 0:
+            add(ConceptInclusion(OWL_THING, b))
+            continue
+
+        b_comp = complement_for(b)
+        add(ConceptInclusion(b_comp, MaxCardinalityConcept(role, n - 1, a)))
+        add(ConceptInclusion(IntersectionConcept((b, b_comp)), OWL_NOTHING))
+        add(ConceptInclusion(OWL_THING, UnionConcept((b, b_comp))))
+
+    ontology.axioms = new_axioms
+
+
+# ---------------------------------------------------------------------------
+# _normalize_max_cardinality_LHS: rewrite ≤nR.A ⊑ B (R, A, B atomic) via the
+# contrapositive, into forms already covered by O1/O2/O14
+# ---------------------------------------------------------------------------
+
+
+def _normalize_max_cardinality_LHS(ontology: Ontology) -> None:
+    """Rewrite ≤nR.A ⊑ B (R, A, B atomic, n >= 0 — Table 1 has no row for a
+    cardinality restriction on the sub side) via its contrapositive into
+    three already-classifiable axioms, replacing the original:
+
+        B' ⊑ ≥(n+1)R.A   (O14)
+        B ⊓ B' ⊑ ⊥        (O1)
+        ⊤ ⊑ B ⊔ B'        (O2)
+
+    Mirrors _normalize_min_cardinality_LHS exactly (same B'=¬B
+    construction via _fresh_complement_concept_for, A untouched), just
+    with the threshold flipped the other way (n → n+1, ≤ → ≥) since
+    ¬(count ≤ n) ≡ count ≥ n+1 rather than ≤ n-1. Unlike the min-cardinality
+    case, n=0 needs no special casing here: ≤0R.A is a real constraint
+    ("no R-successors in A"), not a vacuous one, so the general rewrite
+    (giving ≥1R.A, a valid O14 axiom) applies uniformly."""
+    seen_ids = {ax.id for ax in ontology.axioms}
+    new_axioms = []
+
+    def complement_for(concept: AtomicConcept) -> AtomicConcept:
+        comp = _fresh_complement_concept_for(concept)
+        if comp.id not in ontology.concepts:
+            ontology.concepts[comp.id] = comp
+            ontology.concepts[NegatedConcept(comp).id] = NegatedConcept(comp)
+        return comp
+
+    def add(new_axiom) -> None:
+        if new_axiom.id not in seen_ids:
+            seen_ids.add(new_axiom.id)
+            new_axioms.append(new_axiom)
+
+    for ax in ontology.axioms:
+        if not (
+            isinstance(ax, ConceptInclusion)
+            and isinstance(ax.sub, MaxCardinalityConcept)
+            and _is_atomic_role(ax.sub.role)
+            and _is_atomic_or_thing(ax.sub.concept)
+            and _is_atomic_or_thing(ax.sup)
+        ):
+            new_axioms.append(ax)
+            continue
+
+        role, n, a, b = ax.sub.role, ax.sub.n, ax.sub.concept, ax.sup
+        b_comp = complement_for(b)
+
+        add(ConceptInclusion(b_comp, MinCardinalityConcept(role, n + 1, a)))
+        add(ConceptInclusion(IntersectionConcept((b, b_comp)), OWL_NOTHING))
+        add(ConceptInclusion(OWL_THING, UnionConcept((b, b_comp))))
 
     ontology.axioms = new_axioms
 
 
 def _normalize_complex_concepts_to_fixpoint(ontology: Ontology) -> None:
-    """Run the LHS, RHS, inverse-existential, and inverse-max-cardinality
-    passes together, repeatedly, until none adds an axiom — a defining
-    axiom introduced by one can itself need another (e.g. its own subject
-    is a further conjunction/disjunction, or contains ∃R⁻.X / ≤nR⁻.X)."""
+    """Run the concept-normalization passes together, repeatedly, until
+    none adds an axiom — a defining axiom introduced by one pass can
+    itself need another (e.g. its subject is a further
+    conjunction/disjunction, contains ∃R⁻.X / ≤nR⁻.X / ≥nR⁻.X, or is
+    itself a ≥nR.A ⊑ B / ≤nR.A ⊑ B shape once atomic)."""
     while True:
         axiom_count_before = len(ontology.axioms)
+        # TODO(dnh): Rewrite this into recursive?
         _normalize_complex_concept_LHS(ontology)
         _normalize_complex_concept_RHS(ontology)
         _normalize_inverse_existential_concept(ontology)
         _normalize_inverse_max_cardinality_concept(ontology)
+        _normalize_inverse_min_cardinality_concept(ontology)
+        _normalize_min_cardinality_LHS(ontology)
+        _normalize_max_cardinality_LHS(ontology)
         if len(ontology.axioms) == axiom_count_before:
             break
 
@@ -527,7 +718,7 @@ def _is_atomic_role(role: RoleExpression) -> bool:
 
 
 def classify_axiom(ax) -> str:
-    """Return the Table 1 label (O1-O13) for a single normalized axiom, or
+    """Return the Table 1 label (O1-O14) for a single normalized axiom, or
     UNCLASSIFIED if it doesn't (yet) match one of those forms."""
     if isinstance(ax, RoleInclusion):
         if isinstance(ax.sub, RoleChain):
@@ -573,6 +764,15 @@ def classify_axiom(ax) -> str:
         if isinstance(sup, MaxCardinalityConcept):
             return (
                 O11
+                if _is_atomic_or_thing(sub)
+                and _is_atomic_role(sup.role)
+                and _is_atomic_or_thing(sup.concept)
+                else UNCLASSIFIED
+            )
+
+        if isinstance(sup, MinCardinalityConcept):
+            return (
+                O14
                 if _is_atomic_or_thing(sub)
                 and _is_atomic_role(sup.role)
                 and _is_atomic_or_thing(sup.concept)
