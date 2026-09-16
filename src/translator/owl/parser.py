@@ -14,18 +14,21 @@ Supported OWL constructors:
   owl:propertyChainAxiom (P1 P2 …)                                        → RoleChain(P1,…,Pn) ⊑ Q
   Blank-node restriction  owl:onProperty P + owl:someValuesFrom A/⊤      → ∃P.A | ∃P⁻.A
                                                                              (∃P / ∃P⁻ when A is ⊤)
+  Blank-node restriction  owl:onProperty P + owl:allValuesFrom A/⊤       → ∀P.A | ∀P⁻.A
   Blank-node restriction  owl:onProperty P + owl:hasSelf "true"^^xsd:boolean → Self(P)
                                                                              (P atomic only)
   Blank-node restriction  owl:onProperty P + owl:maxQualifiedCardinality n
                            + owl:onClass A                                → ≤nP.A | ≤nP⁻.A
+  Blank-node restriction  owl:onProperty P + owl:minQualifiedCardinality n
+                           + owl:onClass A                                → ≥nP.A | ≥nP⁻.A
   Blank-node intersection owl:intersectionOf (A B …)                      → A ⊓ B
   Blank-node union        owl:unionOf (A B …)                             → A ⊔ B
   Blank-node enumeration  owl:oneOf (a …)                                  → {a} | {a} ⊔ …
   General (blank-node subject) subClassOf / disjointWith axioms
 
-Unsupported constructs — including owl:allValuesFrom (∀P.A / ∀P⁻.A) and
-owl:minQualifiedCardinality (≥nP.A / ≥nP⁻.A), neither yet supported by the
-rest of the pipeline — are recorded in Ontology.warnings rather than
+Unsupported constructs (unqualified owl:cardinality/owl:maxCardinality/
+owl:minCardinality, owl:hasValue, owl:complementOf, and everything else
+outside the list above) are recorded in Ontology.warnings rather than
 raising; call Ontology.is_supported to check. Parsing itself never aborts;
 owl.ontology_normalizer.ensure_fully_supported is the place to raise
 (UnsupportedConstructError) once an ontology is actually about to be used,
@@ -41,6 +44,7 @@ from rdflib.namespace import OWL, RDF, RDFS
 class UnsupportedConstructError(Exception):
     """Raised when an ontology that's about to be used isn't fully
     supported — see owl.ontology_normalizer.ensure_fully_supported."""
+
 
 from owl.axioms import (
     ConceptInclusion,
@@ -164,13 +168,16 @@ _ALL_RESTRICTIONS: dict = {
 }
 _SUPPORTED_RESTRICTIONS = {
     OWL.someValuesFrom,
+    OWL.allValuesFrom,
     OWL.hasSelf,
     OWL.maxQualifiedCardinality,
+    OWL.minQualifiedCardinality,
 }
-# owl:allValuesFrom and owl:minQualifiedCardinality stay out of
-# _SUPPORTED_RESTRICTIONS and fall through to the generic
-# unsupported-restriction warning loop below like any other unhandled
-# restriction predicate.
+# owl:hasValue, owl:maxCardinality, owl:minCardinality, owl:cardinality, and
+# owl:qualifiedCardinality (unqualified/plain cardinality forms — no
+# owl:onClass filler) stay out of _SUPPORTED_RESTRICTIONS and fall through to
+# the generic unsupported-restriction warning loop below like any other
+# unhandled restriction predicate.
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +301,9 @@ class _OWLBuilder:
                 sup = self._resolve_concept(domain_node)
                 if sup is not None:
                     self._add_axiom(
-                        ConceptInclusion(QualifiedExistentialConcept(role, OWL_THING), sup)
+                        ConceptInclusion(
+                            QualifiedExistentialConcept(role, OWL_THING), sup
+                        )
                     )
 
             for range_node in self._g.objects(node, RDFS.range):
@@ -411,16 +420,22 @@ class _OWLBuilder:
         owl:Thing            → OWL_THING singleton
         Restriction BNode    → QualifiedExistentialConcept(P, A) |
                                 InverseQualifiedExistentialConcept(P, A) |
+                                UniversalConcept(P, A) |
+                                InverseUniversalConcept(P, A) |
                                 MaxCardinalityConcept(P, n, A) |
                                 InverseMaxCardinalityConcept(P, n, A) |
+                                MinCardinalityConcept(P, n, A) |
+                                InverseMinCardinalityConcept(P, n, A) |
                                 SelfConcept(P)
-                                (owl:someValuesFrom /
-                                owl:maxQualifiedCardinality+owl:onClass / owl:hasSelf;
-                                A is OWL_THING for the unqualified ∃P / ∃P⁻ case)
+                                (owl:someValuesFrom / owl:allValuesFrom /
+                                owl:maxQualifiedCardinality+owl:onClass /
+                                owl:minQualifiedCardinality+owl:onClass / owl:hasSelf;
+                                A is OWL_THING for the unqualified ∃P / ∃P⁻ / ∀P / ∀P⁻ case)
         Intersection BNode   → IntersectionConcept(operands)   (owl:intersectionOf)
         Union BNode          → UnionConcept(operands)          (owl:unionOf)
         Enumeration BNode    → Nominal(a) | UnionConcept of Nominal(a_i)  (owl:oneOf)
-        Unsupported node (incl. owl:allValuesFrom, owl:minQualifiedCardinality)
+        Unsupported node (e.g. owl:hasValue, unqualified owl:maxCardinality/
+        owl:minCardinality/owl:cardinality, owl:complementOf)
                              → None  (warning recorded in ontology.warnings)
 
         Any compound expression built here (i.e. everything but a bare named
@@ -472,13 +487,19 @@ class _OWLBuilder:
         owl:someValuesFrom A → QualifiedExistentialConcept(P, A)
                                 | InverseQualifiedExistentialConcept(P, A)   (∃P.A / ∃P⁻.A;
                                 A is OWL_THING for the unqualified ∃P / ∃P⁻ case)
+        owl:allValuesFrom A  → UniversalConcept(P, A)
+                                | InverseUniversalConcept(P, A)   (∀P.A / ∀P⁻.A;
+                                A is OWL_THING for the unqualified ∀P / ∀P⁻ case)
         owl:hasSelf true     → SelfConcept(P)   (Self(P); P must be atomic)
         owl:maxQualifiedCardinality n + owl:onClass A
                              → MaxCardinalityConcept(P, n, A)
                                | InverseMaxCardinalityConcept(P, n, A)   (≤nP.A / ≤nP⁻.A)
-        owl:allValuesFrom (∀P.A / ∀P⁻.A) and owl:minQualifiedCardinality
-        (≥nP.A / ≥nP⁻.A) are not yet supported and fall through to the
-        generic unsupported-restriction warning below.
+        owl:minQualifiedCardinality n + owl:onClass A
+                             → MinCardinalityConcept(P, n, A)
+                               | InverseMinCardinalityConcept(P, n, A)   (≥nP.A / ≥nP⁻.A)
+        Anything else (owl:hasValue, unqualified owl:maxCardinality/
+        owl:minCardinality/owl:cardinality, …) falls through to the generic
+        unsupported-restriction warning below.
         """
         prop_node = self._g.value(node, OWL.onProperty)
 
@@ -494,15 +515,25 @@ class _OWLBuilder:
                 return InverseQualifiedExistentialConcept(role.role, filler)
             return QualifiedExistentialConcept(role, filler)
 
+        all_filler = self._g.value(node, OWL.allValuesFrom)
+        if all_filler is not None:
+            role = self._resolve_role(prop_node)
+            if role is None:
+                return None
+            filler = self._resolve_concept(all_filler)
+            if filler is None:
+                return None
+            if isinstance(role, InverseRole):
+                return InverseUniversalConcept(role.role, filler)
+            return UniversalConcept(role, filler)
+
         has_self = self._g.value(node, OWL.hasSelf)
         if has_self is not None:
             role = self._resolve_role(prop_node)
             if role is None:
                 return None
             if not isinstance(role, AtomicRole):
-                self._warn(
-                    "owl:hasSelf on a non-atomic role — restriction ignored"
-                )
+                self._warn("owl:hasSelf on a non-atomic role — restriction ignored")
                 return None
             return SelfConcept(role)
 
@@ -515,6 +546,17 @@ class _OWLBuilder:
                 "owl:maxQualifiedCardinality",
                 MaxCardinalityConcept,
                 InverseMaxCardinalityConcept,
+            )
+
+        min_qualified = self._g.value(node, OWL.minQualifiedCardinality)
+        if min_qualified is not None:
+            return self._resolve_qualified_cardinality(
+                node,
+                prop_node,
+                min_qualified,
+                "owl:minQualifiedCardinality",
+                MinCardinalityConcept,
+                InverseMinCardinalityConcept,
             )
 
         for pred_uri, label in _ALL_RESTRICTIONS.items():
