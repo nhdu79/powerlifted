@@ -48,7 +48,7 @@ def parse_options():
                         help='Instance file in PDDL', required=True)
     parser.add_argument('-o', '--ontology', dest='ontology',
                         action='store', default=None,
-                        help='Instance file in PDDL', required=True)
+                        help='Ontology file (optional)')
     parser.add_argument('--build', dest='build', action='store_true',
                         help='Build planner before search.')
     parser.add_argument('--debug', dest='debug', action='store_true',

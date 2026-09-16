@@ -1,3 +1,4 @@
+#include "konclude_reasoner.h"
 #include "options.h"
 #include "parser.h"
 #include "plan_manager.h"
@@ -21,6 +22,16 @@ using namespace utils;
 int main(int argc, char *argv[])
 {
     cout << "Initializing planner" << endl;
+
+    // TODO(konclude): trivial wiring smoke test -- confirms the embedded
+    // Konclude reasoner links and its create/destroy round-trip doesn't
+    // crash or hang at startup. Replace with real ontology wiring once the
+    // embedded API is no longer stubbed (see EMBEDDED_LINKING_POWERLIFTED.md).
+    {
+        KoncludeReasoner konclude_smoke_test;
+        cout << "Konclude reasoner smoke test: "
+             << (konclude_smoke_test.ok() ? "OK" : "FAILED") << endl;
+    }
 
     Options opt(argc, argv);
 

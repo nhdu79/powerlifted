@@ -4,6 +4,7 @@
 #include "../../utils/system.h"
 #include "../datalog_atom.h"
 
+#include <limits>
 #include <set>
 
 namespace datalog {

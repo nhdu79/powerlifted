@@ -1,6 +1,17 @@
 cmake_minimum_required(VERSION 3.14)
 project(search LANGUAGES CXX)
 
+
+# --- Konclude embedded reasoner ---
+set(KONCLUDE_REPO_ROOT "/home/zinzin2312/repos/Konclude" CACHE PATH
+    "Path to a Konclude checkout built with KoncludeEmbedded.pro (see docs/EMBEDDED_LINKING_POWERLIFTED.md in that repo)")
+
+add_library(Konclude SHARED IMPORTED)
+set_target_properties(Konclude PROPERTIES
+    IMPORTED_LOCATION "${KONCLUDE_REPO_ROOT}/ReleaseEmbedded/libKonclude.so.1.0.0"
+    INTERFACE_INCLUDE_DIRECTORIES "${KONCLUDE_REPO_ROOT}/Source/Control/Interface/Embedded"
+)
+
 # --- ccache support ---
 
 find_program(CCACHE_PROGRAM ccache)
@@ -141,7 +152,14 @@ endif()
 
 target_link_libraries(search PRIVATE project_options)
 target_link_libraries(datalog_test PRIVATE project_options)
+<<<<<<< Updated upstream
 target_link_libraries(c_chase_test PRIVATE project_options)
+target_link_libraries(search PRIVATE project_options Konclude)
+set_target_properties(search PROPERTIES
+    BUILD_RPATH "${KONCLUDE_REPO_ROOT}/ReleaseEmbedded"
+    INSTALL_RPATH "${KONCLUDE_REPO_ROOT}/ReleaseEmbedded"
+)
+
 
 # --- Build-type specific flags ---
 
