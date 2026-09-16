@@ -11,7 +11,7 @@ def parse_args():
     argparser.add_argument(
         "task", help="path to task pddl file")
     argparser.add_argument(
-        "ontology", help="path to ontology file")
+        "--ontology", default=None, help="path to ontology file (optional)")
     argparser.add_argument(
         "--output-file", default="output.lifted",
         help="path to the output file (default: %(default)s)")

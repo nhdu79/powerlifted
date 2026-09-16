@@ -18,6 +18,17 @@ See [References](#references) for more details.
 - CMake 3.14+
 - Python 3.7+
 
+The translator's ontology support (`src/translator/owl/`) needs `rdflib`.
+Install it in a venv:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r src/translator/requirements.txt
+```
+
+Activate the venv before running `./powerlifted.py` or `./build.py`.
+
 ## Building
 
 You can build the planner using the `build.py` script:

@@ -1,7 +1,9 @@
 # Untracked files
+.venv/
 /*pddl
 *~
 *.pyc
+__pycache__/
 dev/*json
 src/search/config
 src/search/latex
@@ -16,3 +18,4 @@ reports/
 local-tests/
 *.out
 plan
+*.pdf
