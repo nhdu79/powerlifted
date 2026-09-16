@@ -25,6 +25,8 @@
 - Translator might create negated atoms! Mapping between shifting and translator
 
 
+* O14 can be directly rewritten as A(X) -> \exists Y_1,...Y_n r(X,Y_1), ..., r(X,Y_n), Y_1 != Y_2, ... (pairwise)
+
 ### Later
 - [x] Konnect Konclude
 - [ ] Real conjunctive query answering instead of stub for Konclude (waiting for Andreas Steigmiller)
