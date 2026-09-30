@@ -8,8 +8,12 @@ using the expression types defined in owl.expressions.
 Supported OWL constructors:
   owl:ObjectProperty, owl:FunctionalProperty, owl:InverseFunctionalProperty
   owl:SymmetricProperty                                                    → P ⊑ P⁻
+  owl:propertyDisjointWith                                                 → P ⊑ ¬Q
+  owl:inverseOf (direct axiom on a named property)                        (P ≡ Q⁻ →
+                                                                             P ⊑ Q⁻, Q ⊑ P⁻)
   rdfs:subPropertyOf, rdfs:domain, rdfs:range
-  owl:Class with rdfs:subClassOf, owl:disjointWith
+  owl:Class with rdfs:subClassOf, owl:disjointWith, owl:equivalentClass
+                                                                             (A ≡ B → A ⊑ B, B ⊑ A)
   owl:Nothing                                                              → ⊥  (OWL_NOTHING)
   owl:propertyChainAxiom (P1 P2 …)                                        → RoleChain(P1,…,Pn) ⊑ Q
   Blank-node restriction  owl:onProperty P + owl:someValuesFrom A/⊤      → ∃P.A | ∃P⁻.A
@@ -127,13 +131,19 @@ _ALL_AXIOM_PREDS: dict = {
     OWL.hasKey: "owl:hasKey",
     OWL.disjointUnionOf: "owl:disjointUnionOf",
     OWL.propertyDisjointWith: "owl:propertyDisjointWith",
+    OWL.inverseOf: "owl:inverseOf",
 }
-_SUPPORTED_AXIOM_PREDS = {OWL.disjointWith, OWL.propertyChainAxiom}
-# owl:inverseOf is deliberately absent from _ALL_AXIOM_PREDS and handled as its
-# own special case in _scan_unsupported: the blank-node form [owl:inverseOf :P]
-# (e.g. inside rdfs:subPropertyOf) IS supported via _resolve_role, but a direct
-# (:P owl:inverseOf :Q) axiom on a named property is not — a single
-# supported/unsupported bucket can't express that split.
+_SUPPORTED_AXIOM_PREDS = {
+    OWL.disjointWith,
+    OWL.propertyChainAxiom,
+    OWL.propertyDisjointWith,
+    OWL.equivalentClass,
+    OWL.inverseOf,
+}
+# owl:inverseOf also has a second, unrelated usage as the filler of a
+# blank-node role expression (e.g. [owl:inverseOf :P] inside rdfs:subPropertyOf
+# or an owl:onProperty) — that's handled separately by _resolve_role, not by
+# the standalone-axiom collection this dict drives.
 
 # rdf:type values marking a blank node as bundling its own axiom
 _ALL_META_TYPES: dict = {
@@ -278,8 +288,9 @@ class _OWLBuilder:
 
     def _collect_role_axioms(self) -> None:
         """Collect axioms attached directly to each named role: functional and
-        inverse-functional characteristics, symmetric (P ⊑ P⁻), subPropertyOf,
-        and domain/range (as ∃P ⊑ X / ∃P⁻ ⊑ X)."""
+        inverse-functional characteristics, symmetric (P ⊑ P⁻),
+        propertyDisjointWith (P ⊑ ¬Q), inverseOf (P ≡ Q⁻, as P ⊑ Q⁻ and
+        Q ⊑ P⁻), subPropertyOf, and domain/range (as ∃P ⊑ X / ∃P⁻ ⊑ X)."""
         for r_iri, role in self._roles_by_iri.items():
             node = URIRef(r_iri)
 
@@ -291,6 +302,17 @@ class _OWLBuilder:
 
             if (node, RDF.type, OWL.SymmetricProperty) in self._g:
                 self._add_axiom(RoleInclusion(role, InverseRole(role)))
+
+            for disjoint_node in self._g.objects(node, OWL.propertyDisjointWith):
+                sup = self._resolve_role(disjoint_node)
+                if sup is not None:
+                    self._add_axiom(RoleInclusion(role, NegatedRole(sup)))
+
+            for inv_node in self._g.objects(node, OWL.inverseOf):
+                inv = self._resolve_role(inv_node)
+                if inv is not None:
+                    self._add_axiom(RoleInclusion(role, InverseRole(inv)))
+                    self._add_axiom(RoleInclusion(inv, InverseRole(role)))
 
             for sup_node in self._g.objects(node, RDFS.subPropertyOf):
                 sup = self._resolve_role(sup_node)
@@ -349,8 +371,8 @@ class _OWLBuilder:
             self._add_axiom(RoleInclusion(chain, sup))
 
     def _collect_concept_axioms(self) -> None:
-        """Collect subClassOf/disjointWith axioms whose subject is a named
-        (non-blank-node) class."""
+        """Collect subClassOf/disjointWith/equivalentClass axioms whose
+        subject is a named (non-blank-node) class."""
         for c_iri, concept in self._concepts_by_iri.items():
             node = URIRef(c_iri)
 
@@ -364,11 +386,18 @@ class _OWLBuilder:
                 if sup is not None:
                     self._add_axiom(ConceptInclusion(concept, NegatedConcept(sup)))
 
+            for equiv_node in self._g.objects(node, OWL.equivalentClass):
+                equiv = self._resolve_concept(equiv_node)
+                if equiv is not None:
+                    self._add_axiom(ConceptInclusion(concept, equiv))
+                    self._add_axiom(ConceptInclusion(equiv, concept))
+
     def _collect_general_axioms(self) -> None:
-        """Collect subClassOf/disjointWith axioms whose subject is a blank-node
-        class expression (general TBox axioms). rdf:List nodes are skipped."""
+        """Collect subClassOf/disjointWith/equivalentClass axioms whose
+        subject is a blank-node class expression (general TBox axioms).
+        rdf:List nodes are skipped."""
         visited: set = set()
-        for predicate in (RDFS.subClassOf, OWL.disjointWith):
+        for predicate in (RDFS.subClassOf, OWL.disjointWith, OWL.equivalentClass):
             for subject in self._g.subjects(predicate, None):
                 if not isinstance(subject, BNode) or subject in visited:
                     continue
@@ -409,6 +438,11 @@ class _OWLBuilder:
                     sup = self._resolve_concept(disjoint_node)
                     if sup is not None:
                         self._add_axiom(ConceptInclusion(sub_expr, NegatedConcept(sup)))
+                for equiv_node in self._g.objects(subject, OWL.equivalentClass):
+                    equiv = self._resolve_concept(equiv_node)
+                    if equiv is not None:
+                        self._add_axiom(ConceptInclusion(sub_expr, equiv))
+                        self._add_axiom(ConceptInclusion(equiv, sub_expr))
 
     # ------------------------------------------------------------------
     # Node resolvers — turn rdflib nodes into expression objects
@@ -717,17 +751,6 @@ class _OWLBuilder:
                     self._warn(
                         f"unsupported axiom predicate {label} on "
                         f"<{subject_repr}> — axiom ignored"
-                    )
-
-        seen_inv: set[str] = set()
-        for s in self._g.subjects(OWL.inverseOf, None):
-            if isinstance(s, URIRef):
-                key = str(s)
-                if key not in seen_inv:
-                    seen_inv.add(key)
-                    self._warn(
-                        f"unsupported axiom predicate owl:inverseOf on "
-                        f"<{_local_name(key)}> — axiom ignored"
                     )
 
         for type_uri, label in _ALL_META_TYPES.items():

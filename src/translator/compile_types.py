@@ -64,7 +64,7 @@ def add_conditions_to_actions(task, graph):
         # and constants, and add types to that in the precondition
         precond = action.get_action_preconditions
         for cond in precond:
-            if isinstance(cond, pddl.conditions.MinimumKnowledgeOperator):
+            if isinstance(cond, pddl.conditions.MinimalKnowledgeOperator):
                 replace_type_in_mko(cond, graph)
                 continue
             assert isinstance(cond, pddl.Literal)

@@ -37,37 +37,50 @@ from rdflib.namespace import OWL
 # by any module that needs to construct or recognise those names.
 # ---------------------------------------------------------------------------
 
-EXISTENTIAL_PREFIX = "exists"
-INVERSE_EXISTENTIAL_PREFIX = "existsinv"
-INVERSE_PREFIX = "inv"
+#
+# Every constant contains "_", while a user name never does (parse_name
+# drops it), so no compound or generated id can equal a user name. Every
+# prefix ends in "_" as well, so that no prefix is a prefix of another one
+# followed by a user name ("exists_" + "invr" vs. "existsinv_" + "r").
+# Nested compounds aren't bracketed, though, so the ids are not injective
+# in general; owl.ontology_normalizer.fresh_symbols' register_* guard
+# against two expressions sharing one fresh symbol.
+EXISTENTIAL_PREFIX = "exists_"
+INVERSE_EXISTENTIAL_PREFIX = "existsinv_"
+INVERSE_PREFIX = "inv_"
 NOT_PREFIX = "not_"
 AND_SEP = "_and_"
 OR_SEP = "_or_"
 QUALIFIED_SEP = "_dot_"
-FORALL_PREFIX = "forall"
-INVERSE_FORALL_PREFIX = "forallinv"
+FORALL_PREFIX = "forall_"
+INVERSE_FORALL_PREFIX = "forallinv_"
 NOMINAL_PREFIX = "nom_"
-SELF_PREFIX = "self"
-MAX_CARDINALITY_PREFIX = "maxcard"
-INVERSE_MAX_CARDINALITY_PREFIX = "maxcardinv"
-MIN_CARDINALITY_PREFIX = "mincard"
-INVERSE_MIN_CARDINALITY_PREFIX = "mincardinv"
+SELF_PREFIX = "self_"
+MAX_CARDINALITY_PREFIX = "maxcard_"
+INVERSE_MAX_CARDINALITY_PREFIX = "maxcardinv_"
+MIN_CARDINALITY_PREFIX = "mincard_"
+INVERSE_MIN_CARDINALITY_PREFIX = "mincardinv_"
 CARD_SEP = "_"
 CHAIN_SEP = "_o_"
 
 
 def parse_name(name):
-    return re.sub(r"[^a-zA-Z0-9]", "", name.lower())
-    # return re.sub(r'([a-z])([A-Z])([0-9])', r'\1\2\3', name).lower()
+    """Normalize a user name: lowercase, keep only [a-z0-9] (mirrors
+    pddl-horndl's normalize_user_name). Apply it exactly once, to user
+    names only — never to a generated name, whose "_" it would erase."""
+    return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
 def _local_name(iri: str) -> str:
-    """Return the normalised local name of an IRI.
+    """Return the id of an entity named iri.
 
-    Extracts the fragment (after #) or last path segment (after /), then
-    applies parse_name — the same transformation used by Clipper and Compiler
-    so that all three components agree on predicate names.
+    For an absolute IRI (a user entity), the fragment (after #) or last
+    path segment (after /), normalized with parse_name. Anything else is a
+    fresh symbol minted by owl.ontology_normalizer (e.g. "def_exists_r_dot_a"),
+    whose name is already an id and is kept verbatim, "_" included.
     """
+    if ":" not in iri:
+        return iri
     for sep in ("#", "/"):
         if sep in iri:
             return parse_name(iri.rsplit(sep, 1)[-1])

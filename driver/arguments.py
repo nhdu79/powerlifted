@@ -49,6 +49,10 @@ def parse_options():
     parser.add_argument('-o', '--ontology', dest='ontology',
                         action='store', default=None,
                         help='Ontology file (optional)')
+    parser.add_argument('--clipper', dest='clipper',
+                        action='store', default=None,
+                        help='Clipper executable used with --ontology '
+                             '(default: $CLIPPER_PATH, else clipper.sh on PATH)')
     parser.add_argument('--build', dest='build', action='store_true',
                         help='Build planner before search.')
     parser.add_argument('--debug', dest='debug', action='store_true',

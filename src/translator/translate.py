@@ -17,17 +17,17 @@ if not python_version_supported():
     sys.exit("Error: Translator only supports Python >= 2.7 and Python >= 3.2.")
 
 import compile_types
-import complete_state
 import normalize
 import ontology
 import options
 import pddl
 import pddl_parser
-import pddl_to_prolog
 import reachability
 import remove_predicates
 import static_predicates
 import timers
+from rules import format_rule
+from rules.atoms import is_variable
 
 DEBUG = False
 
@@ -59,9 +59,6 @@ def main():
             domain_filename=options.domain, task_filename=options.task
         )
 
-    if options.ontology is not None:
-        print("The ontology is in file", options.ontology, "but it is not yet used.")
-
     print("Processing task", task.task_name)
     with timers.timing("Normalizing task"):
         normalize.normalize(task)
@@ -83,7 +80,7 @@ def main():
         isinstance(task.goal, pddl.Conjunction)
         or isinstance(task.goal, pddl.Atom)
         or isinstance(task.goal, pddl.NegatedAtom)
-        or isinstance(task.goal, pddl.MinimumKnowledgeOperator)
+        or isinstance(task.goal, pddl.MinimalKnowledgeOperator)
     ), "Goal is not conjunctive."
 
     if options.ground_state_representation:
@@ -126,12 +123,17 @@ def main():
         output_trivially_unsolvable_task()
         sys.exit(0)
 
+    if options.ontology is not None:
+        with timers.timing("Processing ontology and MKOs"):
+            ontology.process_ontology(
+                task,
+                options.ontology,
+                clipper_path=options.clipper,
+                verbose=options.verbose_data,
+            )
+
     with timers.timing("Removing unused predicate symbols"):
         remove_static_predicates_from_goal(task, static_pred)
-
-    if options.ontology is not None:
-        with timers.timing("Processing ontology and minimum knowledge opearots"):
-            ontology.process_ontology(task, options.ontology)
 
     with timers.timing("Printing names and representation type"):
         print_names_and_representation(output, task.domain_name, task.task_name)
@@ -157,6 +159,9 @@ def main():
 
     with timers.timing("Printing action schemas"):
         print_action_schemas(output, task, object_index, predicate_index, type_index)
+
+    with timers.timing("Printing rules"):
+        print_rules(output, task, object_index, predicate_index)
 
     print("Total translation time:", timer.get_cpu_time())
 
@@ -284,6 +289,61 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
                 int(eff.literal.negated),
                 len(eff.literal.args),
                 " ".join(i for i in args_list),
+                file=output,
+            )
+
+
+def print_rules(output, task, object_index, predicate_index):
+    # Rules (task.ontology_rules) mirror datalog::DisjunctiveExistentialRule.
+    # Always printed; "RULES 0" without an ontology.
+    # - Canary and number of rules
+    # - Per rule, a line with
+    #    - number of effect atoms, i.e. the rule's head (0: bottom)
+    #    - number of body atoms
+    #    - number of variables
+    # - One line per effect atom, then per body atom, as action preconditions:
+    #    - predicate name
+    #    - predicate index
+    #    - negated (0/1)
+    #    - number of arguments
+    #    - pairs (O, i): O is 'c' for a constant (i: object index), 'p' for a
+    # variable (i: variable index)
+    # Variables: numbered per rule, 0 to n-1, by first occurrence, body first.
+    # Effect-only variables are existential. Several effect atoms: a
+    # disjunction without existential variables, a conjunction under the
+    # existential otherwise (see rules.disjunctive_existential_rule).
+    rules = getattr(task, "ontology_rules", [])
+    print("RULES %d" % len(rules), file=output)
+    for rule in rules:
+        variable_index = {}
+        for atom in rule.body + rule.effect:
+            for x in atom.args:
+                if is_variable(x) and x not in variable_index:
+                    variable_index[x] = len(variable_index)
+        print(len(rule.effect), len(rule.body), len(variable_index), file=output)
+        for atom in rule.effect + rule.body:
+            if atom.predicate not in predicate_index:
+                raise ValueError(
+                    "Rule predicate %r is not a declared predicate: %s"
+                    % (atom.predicate, format_rule(rule))
+                )
+            args_list = []
+            for x in atom.args:
+                if is_variable(x):
+                    args_list += ["p", str(variable_index[x])]
+                elif x in object_index:
+                    args_list += ["c", str(object_index[x])]
+                else:
+                    raise ValueError(
+                        "Rule constant %r is not an object of the task: %s"
+                        % (x, format_rule(rule))
+                    )
+            print(
+                atom.predicate,
+                predicate_index[atom.predicate],
+                int(atom.negated),
+                len(atom.args),
+                " ".join(args_list),
                 file=output,
             )
 
@@ -461,7 +521,7 @@ def remove_static_predicates_from_goal(task, static_pred):
             removed += 1
     for g in task.goal.parts:
         if (
-            isinstance(g, pddl.MinimumKnowledgeOperator)
+            isinstance(g, pddl.MinimalKnowledgeOperator)
             or g.predicate not in static_pred
         ):
             parts.append(g)
@@ -538,7 +598,8 @@ def output_trivially_solvable_task():
     dummy() 0 0 0 0
     GOAL 1
     dummy() 0 0 0
-    ACTION-SCHEMAS 0"""
+    ACTION-SCHEMAS 0
+    RULES 0"""
     print("Printing a trivially solvable task.", file=native_stdout)
     print(dummy_task)
     return
@@ -556,7 +617,8 @@ def output_trivially_unsolvable_task():
     INITIAL-STATE 0
     GOAL 1
     dummy() 0 0 0
-    ACTION-SCHEMAS 0"""
+    ACTION-SCHEMAS 0
+    RULES 0"""
     print("Printing a trivially unsolvable task.", file=native_stdout)
     print(dummy_task)
     return

@@ -62,6 +62,8 @@ def run_translator(build_dir, options, extra):
     ]
     if options.ontology is not None:
         translator_args += ["--ontology", options.ontology]
+    if options.clipper is not None:
+        translator_args += ["--clipper", options.clipper]
     translator = subprocess.Popen(
         translator_args + ["--output-file", options.translator_file] + extra
     )
