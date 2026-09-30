@@ -13,6 +13,10 @@ def parse_args():
     argparser.add_argument(
         "--ontology", default=None, help="path to ontology file (optional)")
     argparser.add_argument(
+        "--clipper", default=None,
+        help="path to the Clipper executable used to rewrite the ontology and "
+             "mko queries (default: $CLIPPER_PATH, else clipper.sh on PATH)")
+    argparser.add_argument(
         "--output-file", default="output.lifted",
         help="path to the output file (default: %(default)s)")
     argparser.add_argument(
