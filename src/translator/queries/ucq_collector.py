@@ -2,7 +2,6 @@ import contextlib
 import io
 
 from pddl import Atom, Conjunction, Disjunction, ExistentialCondition, Literal
-
 from rules.atoms import EQUALITY_PREDICATE
 
 from .naming import prime_predicate_name, query_predicate_name
@@ -99,7 +98,5 @@ class UCQCollector:
             literal = formula.__class__(name, formula.args)
         else:
             name = query_predicate_name(self._query_ids[formula])
-            literal = Atom(
-                prime_predicate_name(name), sorted(formula.free_variables())
-            )
+            literal = Atom(prime_predicate_name(name), sorted(formula.free_variables()))
         return literal.negate() if mko.negated else literal
