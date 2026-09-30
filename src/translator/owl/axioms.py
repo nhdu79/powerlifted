@@ -214,6 +214,8 @@ class Ontology:
     axiom_types — axioms bucketed by their Table 1 (PaGoDa paper, page 7)
                 normal form label ("O1".."O13", or "unclassified"); empty
                 until owl.normalizer.normalize_ontology is called.
+    fresh_definitions — the expression each fresh symbol introduced by
+                normalization stands for.
     """
 
     iri: str
@@ -222,6 +224,9 @@ class Ontology:
     axioms: list = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     axiom_types: dict[str, list] = field(default_factory=dict)
+    # fresh symbol id -> the expression it stands for; see
+    # owl.ontology_normalizer.fresh_symbols.claim_fresh_symbol.
+    fresh_definitions: dict[str, object] = field(default_factory=dict)
 
     # Convenience filters ---------------------------------------------------
 

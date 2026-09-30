@@ -1,0 +1,64 @@
+@prefix : <http://www.semanticweb.org/anon/ontologies/2026/9/Team/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xml: <http://www.w3.org/XML/1998/namespace> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@base <http://www.semanticweb.org/anon/ontologies/2026/9/Team/> .
+
+<http://www.semanticweb.org/anon/ontologies/2026/9/Team> rdf:type owl:Ontology .
+
+#################################################################
+#    Object Properties
+#################################################################
+
+###  http://www.semanticweb.org/anon/ontologies/2026/9/Team#hasCaptain
+:hasCaptain rdf:type owl:ObjectProperty ;
+            rdfs:domain :Team ;
+            rdfs:range :Player ;
+            rdfs:comment "Relates a team to one of its players acting as captain." .
+
+
+###  http://www.semanticweb.org/anon/ontologies/2026/9/Team#hasMember
+:hasMember rdf:type owl:ObjectProperty ;
+           rdfs:domain :Team ;
+           rdfs:range :Player ;
+           rdfs:comment "Relates a team to one of its players." .
+
+
+#################################################################
+#    Classes
+#################################################################
+
+###  http://www.semanticweb.org/anon/ontologies/2026/9/Team#Team
+:Team rdf:type owl:Class ;
+      rdfs:subClassOf [ rdf:type owl:Restriction ;
+                         owl:onProperty :hasCaptain ;
+                         owl:maxQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                         owl:onClass :Player
+                       ] ,
+                       [ rdf:type owl:Restriction ;
+                         owl:onProperty :hasMember ;
+                         owl:minQualifiedCardinality "2"^^xsd:nonNegativeInteger ;
+                         owl:onClass :Player
+                       ] ;
+      rdfs:comment "A team has at most one captain and at least two members." .
+
+
+###  http://www.semanticweb.org/anon/ontologies/2026/9/Team#Player
+:Player rdf:type owl:Class ;
+        rdfs:subClassOf [ rdf:type owl:Class ;
+                           owl:unionOf ( :Captain :Substitute )
+                         ] ;
+        rdfs:comment "Every player is either a captain or a substitute." .
+
+
+###  http://www.semanticweb.org/anon/ontologies/2026/9/Team#Captain
+:Captain rdf:type owl:Class ;
+         owl:disjointWith :Substitute ;
+         rdfs:comment "A player who captains a team. Disjoint from substitute." .
+
+
+###  http://www.semanticweb.org/anon/ontologies/2026/9/Team#Substitute
+:Substitute rdf:type owl:Class ;
+            rdfs:comment "A player who does not captain a team." .
