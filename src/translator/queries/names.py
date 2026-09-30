@@ -105,6 +105,7 @@ class OntologyNames:
             if ":" not in expr.iri:
                 self.generated.add(expr.id)
 
+
 def _atomic_expressions(node):
     """Every AtomicConcept/AtomicRole occurring in node (an axiom, an
     expression, or a list/tuple of them)."""

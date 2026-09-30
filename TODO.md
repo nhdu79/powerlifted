@@ -1,5 +1,14 @@
 # Duy
 
+- [ ] Rewrite rule O10 and O14 into having 1 predicate in the head with all variables (normal form)
+- [ ] Atom flags in conditions/preconditions of actions to distinguish between MKO and non-MKO atoms
+    - This is to be parsed back in the search component
+    - No need to `DATALOG_` anymore
+- [ ] EQ1--EQ4 in translator (only if there is number restriction or nomial)
+    - Upperbound = `(EQ1--EQ4) U (ontology_rules)` U `una_rules`
+    - Construct `una_rules` for each pair of constants AND objects (a,b):
+        - a = b -> ⊥
+
 - [ ] Understand what's written for c-chase
 
 ## Caveats
