@@ -28,7 +28,7 @@ auxiliary predicate neq_ instead of an inequality:
 neq_ keeps the vars from being equated, which neq_denial_rules' two shared
 rules enforce:
 
-    neq_(y,z) ∧ y ≈ z → ⊥        neq_(y,z) ∧ z ≈ y → ⊥
+    neq_(y,z) ∧ y ≈ z → ⊥
 
 so no rule needs negation.
 
