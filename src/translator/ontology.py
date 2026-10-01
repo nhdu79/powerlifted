@@ -1,18 +1,22 @@
 """
 Compiles the ontology and the task's mkos into lowerbound rules (the
 counterpart of pddl-horndl's compilation/pipeline.py Compiler, without the
-coherence update):
+coherence update), and the ontology into upperbound rules:
 
 1. collect the query of every mko (queries.ucq_collector);
 2. check that the task's and the ontology's names can be translated into
    Clipper's spelling and back (queries.names);
-3. format the queries for Clipper and rewrite them together with the shifted
+3. compute the upperbound rules (rules.upperbound), in the task's spelling,
+   with a rule per conjunctive query deriving its QUERY<i>;
+4. format the queries for Clipper and rewrite them together with the shifted
    ontology (queries.rewriter, rules.lowerbound);
-4. clean up Clipper's rules and separate what the ontology entails from what
-   the state holds by priming derived predicates (queries.datalog);
-5. replace every mko by the literal reading its answer.
+5. clean up Clipper's rules and declare the predicates the lowerbound and
+   upperbound rules use that the task doesn't (queries.datalog);
+6. replace every mko by the literal reading its answer, flagged mko (see
+   pddl.conditions.Literal), which the search evaluates w.r.t. the rules.
 
-Rules are kept as DisjunctiveExistentialRule objects on task.ontology_rules.
+Rules are kept as DisjunctiveExistentialRule objects on task.lowerbound_rules
+and task.upperbound_rules.
 """
 
 import os
@@ -32,7 +36,14 @@ from queries.names import (
 from queries.naming import query_predicate_name
 from queries.rewriter import prepare_queries, query_atoms
 from queries.ucq_collector import UCQCollector
-from rules import compute_lowerbound_rules, print_rules, shifted_ontology_axioms
+from rules import (
+    compute_lowerbound_rules,
+    compute_upperbound_rules,
+    group_by_normal_form,
+    print_rules,
+    shifted_ontology_axioms,
+)
+from rules.atoms import EQUALITY_PREDICATE
 
 CLIPPER_PATH_ENVIRONMENT_VARIABLE = "CLIPPER_PATH"
 DEFAULT_CLIPPER_PATH = "clipper.sh"
@@ -67,6 +78,18 @@ def _collect_ucqs(task):
     _apply_to_all_mkos(task, collect)
     collector.number_queries()
     return collector
+
+
+def _uses_equality(condition):
+    """Whether condition has an "=" literal, inside an mko or not."""
+    if isinstance(condition, Literal):
+        return condition.predicate == EQUALITY_PREDICATE
+    return any(_uses_equality(part) for part in condition.parts)
+
+
+def _task_uses_equality(task):
+    """Whether the task's conditions use "=" (inside an mko or not)."""
+    return any(_uses_equality(proxy.condition) for proxy in all_conditions(task))
 
 
 def _reachable_predicates(task):
@@ -117,13 +140,15 @@ def process_ontology(
     verbose=False,
     debug=False,
 ):
-    """Compile the ontology and the task's mkos into lowerbound rules.
+    """Compile the ontology and the task's mkos into lowerbound rules, and
+    the ontology into upperbound rules.
 
-    Stores the rules on task.ontology_rules, declares the predicates they
-    introduce in task.predicates, and replaces every mko in the task's
-    conditions. Raises owl.UnsupportedConstructError if the ontology isn't
-    fully supported, and queries.names.NameClashError if its names and the
-    task's can't be translated into Clipper's spelling safely.
+    Stores the rules on task.lowerbound_rules and task.upperbound_rules,
+    declares the predicates they introduce in task.predicates, and replaces
+    every mko in the task's conditions. Raises owl.UnsupportedConstructError
+    if the ontology isn't fully supported, and queries.names.NameClashError if
+    its names and the task's can't be translated into Clipper's spelling
+    safely.
     """
     clipper_path = _resolve_clipper(clipper_path)
     collector = _collect_ucqs(task)
@@ -131,53 +156,92 @@ def process_ontology(
     ontology = parse_owl(ontology_filepath)
     ontology_names = OntologyNames(ontology)
     normalize_ontology(ontology)
-    axioms = shifted_ontology_axioms(ontology)
-    ontology_names.add_generated(axioms)
+    # Before the mkos are replaced, so an "=" inside one counts too. Tells the
+    # upperbound to add the equality axioms and UNA rules (which it also does
+    # if the ontology has number restrictions or nominals). The lowerbound
+    # needs neither: Clipper derives no "=", it rewrites number restrictions
+    # into denials over distinct fillers.
+    task_uses_equality = _task_uses_equality(task)
+    shifted_axioms = shifted_ontology_axioms(ontology)
+    ontology_names.add_generated(shifted_axioms)
     check_names(task, ontology_names)
-    spelling = ClipperSpelling(pddl_predicate_names(task))
+    clipper_spelling = ClipperSpelling(pddl_predicate_names(task))
+    # Before Clipper runs: compute_lowerbound_rules adds a warning to
+    # ontology.warnings, which ensure_fully_supported would reject.
+    upperbound_rules = compute_upperbound_rules(
+        ontology,
+        # objects are merged with domain's constants, so below is enough (see parsing_function.py:422)
+        constants=[obj.name for obj in task.objects],
+        arities={p.name: len(p.arguments) for p in task.predicates},
+        uses_equality=task_uses_equality,
+        rename=clipper_spelling.to_pddl,
+        extra_rules=collector.query_rules(),
+    )
 
-    queries, unparameterized = prepare_queries(collector.ucqs, spelling.to_clipper)
-    query_predicates = {
-        spelling.to_clipper(name): arity
+    clipper_queries, unparameterized_query_ids = prepare_queries(
+        collector.ucqs, clipper_spelling.to_clipper
+    )
+    clipper_query_predicates = {
+        clipper_spelling.to_clipper(name): arity
         for name, arity in query_atoms(collector.ucqs).items()
     }
-    raw_rules, new_rules = compute_lowerbound_rules(
+    clipper_rules, clipper_introduced_rules = compute_lowerbound_rules(
         ontology,
         clipper_path,
         debug=debug,
-        queries=[q for group in queries for q in group],
-        query_predicates=query_predicates,
-        axioms=axioms,
+        queries=[q for group in clipper_queries for q in group],
+        query_predicates=clipper_query_predicates,
+        axioms=shifted_axioms,
     )
 
-    rules = datalog.rename_rules(raw_rules, spelling)
-    rules, duplicates = datalog.deduplicate_rules(rules, unparameterized)
-    unreachable, irrelevant = [], []
+    lowerbound_rules = datalog.rename_rules(clipper_rules, clipper_spelling)
+    lowerbound_rules, duplicate_rules = datalog.deduplicate_rules(
+        lowerbound_rules, unparameterized_query_ids
+    )
+    unreachable_rules, irrelevant_rules = [], []
     if filter_unreachable:
-        rules, unreachable = datalog.filter_unreachable_rules(
-            rules, _reachable_predicates(task)
+        lowerbound_rules, unreachable_rules = datalog.filter_unreachable_rules(
+            lowerbound_rules, _reachable_predicates(task)
         )
     if filter_irrelevant:
-        rules, irrelevant = datalog.filter_irrelevant_rules(
-            rules, collector.queried_predicates, len(collector.ucqs)
+        lowerbound_rules, irrelevant_rules = datalog.filter_irrelevant_rules(
+            lowerbound_rules, collector.queried_predicates, len(collector.ucqs)
         )
-    derived = datalog.derived_predicates(rules)
-    rules, new_predicates = datalog.compile_rules(rules, task.predicates)
+
+    new_predicate_declarations = datalog.predicate_declarations(
+        lowerbound_rules + upperbound_rules, task.predicates
+    )
 
     # A query Clipper derives nothing for still needs its (then never true)
     # predicate declared, as some condition reads it.
+    declared_names = {p.name for p in new_predicate_declarations}
     for i, ucq in enumerate(collector.ucqs):
         name = query_predicate_name(i)
-        if name not in derived:
+        if name not in declared_names:
             arity = len(ucq.free_variables())
-            new_predicates.append(datalog.primed_predicate(name, arity))
-    task.predicates.extend(new_predicates)
-    _apply_to_all_mkos(task, lambda mko: collector.replacement(mko, derived))
-    task.ontology_rules = rules
+            new_predicate_declarations.append(datalog.untyped_predicate(name, arity))
+    task.predicates.extend(new_predicate_declarations)
+    _apply_to_all_mkos(task, collector.replacement)
+    task.lowerbound_rules = lowerbound_rules
+    task.upperbound_rules = upperbound_rules
 
     if verbose:
         _print_compilation_information(
-            queries, rules, duplicates, unreachable, irrelevant, new_rules
+            clipper_queries,
+            lowerbound_rules,
+            duplicate_rules,
+            unreachable_rules,
+            irrelevant_rules,
+            clipper_introduced_rules,
+        )
+        upperbound_rules_by_form = group_by_normal_form(upperbound_rules)
+        print(
+            f"%% UPPERBOUND RULES (not listed): {len(upperbound_rules)}, "
+            "by normal form: "
+            + ", ".join(
+                f"{form} {len(form_rules)}"
+                for form, form_rules in upperbound_rules_by_form.items()
+            )
         )
     for warning in ontology.warnings:
         print(f"Ontology warning: {warning}")
@@ -186,17 +250,22 @@ def process_ontology(
 
 
 def _print_compilation_information(
-    queries, rules, duplicates, unreachable, irrelevant, new_rules
+    clipper_queries,
+    lowerbound_rules,
+    duplicate_rules,
+    unreachable_rules,
+    irrelevant_rules,
+    clipper_introduced_rules,
 ):
-    for i, group in enumerate(queries):
+    for i, group in enumerate(clipper_queries):
         for q in group:
             print(f"%% {query_predicate_name(i)}: {q}")
     for title, section in (
-        ("RULES", rules),
-        ("DUPLICATE RULES", duplicates),
-        ("UNREACHABLE RULES", unreachable),
-        ("IRRELEVANT RULES", irrelevant),
-        ("RULES USING PREDICATES CLIPPER INTRODUCED", new_rules),
+        ("LOWERBOUND RULES", lowerbound_rules),
+        ("DUPLICATE RULES", duplicate_rules),
+        ("UNREACHABLE RULES", unreachable_rules),
+        ("IRRELEVANT RULES", irrelevant_rules),
+        ("RULES USING PREDICATES CLIPPER INTRODUCED", clipper_introduced_rules),
     ):
         if section:
             print(f"%% {title}:")

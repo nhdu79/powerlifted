@@ -2,9 +2,10 @@ import contextlib
 import io
 
 from pddl import Atom, Conjunction, Disjunction, ExistentialCondition, Literal
+from rules import DisjunctiveExistentialRule
 from rules.atoms import EQUALITY_PREDICATE
 
-from .naming import prime_predicate_name, query_predicate_name
+from .naming import query_predicate_name
 
 
 def _is_cq(condition):
@@ -45,8 +46,7 @@ class UCQCollector:
 
     pddl-horndl replaces each mko right away and repairs the replacement
     once the rules are known; here collecting and replacing are two
-    separate calls, since whether a single-atom mko reads a primed
-    predicate depends on the compiled rules.
+    separate calls, as the queries must be numbered (number_queries) first.
     """
 
     def __init__(self):
@@ -80,23 +80,41 @@ class UCQCollector:
         self.ucqs.sort(key=_dumped)
         self._query_ids = {formula: i for i, formula in enumerate(self.ucqs)}
 
-    def replacement(self, mko, derived):
-        """The literal mko stands for, once the rules are compiled; derived
-        are the predicates the rules derive (unprimed).
+    def replacement(self, mko):
+        """The literal mko stands for: the same predicate (no primed copy),
+        flagged mko=True, so the search evaluates it w.r.t. the lowerbound
+        rules instead of the state.
 
-        A single-atom mko over a derived predicate P reads DATALOG_P, and
-        over any other predicate reads the state. That also covers
-        (in)equality: under the unique name assumption, mko(= ?x ?y) is
-        just (= ?x ?y). Any other mko reads DATALOG_QUERY<i> over its free
+        A single-atom mko reads its own atom. (In)equality is the exception:
+        under the unique name assumption, mko(= ?x ?y) is just (= ?x ?y),
+        read without the flag. Any other mko reads QUERY<i> over its free
         variables, in the order queries.rewriter gives them to Clipper.
         """
         (formula,) = mko.parts
         if isinstance(formula, Literal):
-            name = formula.predicate
-            if name in derived:
-                name = prime_predicate_name(name)
-            literal = formula.__class__(name, formula.args)
+            literal = formula.__class__(
+                formula.predicate,
+                formula.args,
+                mko=formula.predicate != EQUALITY_PREDICATE,
+            )
         else:
             name = query_predicate_name(self._query_ids[formula])
-            literal = Atom(prime_predicate_name(name), sorted(formula.free_variables()))
+            literal = Atom(name, sorted(formula.free_variables()), mko=True)
         return literal.negate() if mko.negated else literal
+
+    def query_rules(self):
+        """The query of every QUERY<i> as rules, one per conjunctive query:
+        cq → QUERY<i>(free variables), with the head's arguments in the
+        order replacement reads them. Clipper rewrites the queries for the
+        lowerbound itself; these are for the upperbound. Call once the
+        queries are numbered (number_queries)."""
+        rules = []
+        for i, ucq in enumerate(self.ucqs):
+            head = Atom(query_predicate_name(i), sorted(ucq.free_variables()))
+            for cq in ucq.parts if isinstance(ucq, Disjunction) else (ucq,):
+                if isinstance(cq, ExistentialCondition):
+                    (cq,) = cq.parts
+                atoms = cq.parts if isinstance(cq, Conjunction) else (cq,)
+                body = tuple(Atom(a.predicate, a.args) for a in atoms)
+                rules.append(DisjunctiveExistentialRule(effect=(head,), body=body))
+        return rules

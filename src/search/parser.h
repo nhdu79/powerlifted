@@ -20,7 +20,8 @@ void parse_types(Task &task, int number_types);
 void parse_predicates(Task &task, int number_predicates);
 void parse_objects(Task &task, int number_objects);
 void parse_initial_state(Task &task, int initial_state_size);
-void parse_goal(Task &task, int goal_size);
-void parse_action_schemas(Task &task, int number_action_schemas);
+// Both return the number of mko atoms they read.
+int parse_goal(Task &task, int goal_size);
+int parse_action_schemas(Task &task, int number_action_schemas);
 
 #endif  // SEARCH_PARSER_H

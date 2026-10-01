@@ -62,7 +62,9 @@ public:
 
     void create_goal_condition(std::vector<AtomicGoal> goals,
                                std::unordered_set<int> nullary_goals,
-                               std::unordered_set<int> negative_nullary_goals);
+                               std::unordered_set<int> negative_nullary_goals,
+                               std::unordered_set<int> nullary_mko_goals,
+                               std::unordered_set<int> negative_nullary_mko_goals);
 
     void initialize_action_schemas(const std::vector<ActionSchema> &action_list);
 

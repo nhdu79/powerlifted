@@ -1,6 +1,6 @@
 """
-Render DisjunctiveExistentialRule objects (the output of
-rules.table1.ontology_rules.translate_ontology) as human-readable first-order
+Render DisjunctiveExistentialRule objects (e.g. the output of
+rules.upperbound.compute_upperbound_rules) as human-readable first-order
 rules, using the same logical notation as Zhou et al. 2015's Table 1 and
 owl.axioms' DL-notation rendering (_dl_axiom &c.): ∧, ∨, ¬, →, ∃, ≈, ≠.
 
@@ -13,7 +13,7 @@ rule.py's own module docstring).
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from pddl.conditions import Literal
 
@@ -57,7 +57,7 @@ def format_effect(rule: DisjunctiveExistentialRule) -> str:
 
 
 def format_rule(rule: DisjunctiveExistentialRule) -> str:
-    """"body → effect", e.g. "R(x, y) ∧ A(y) → B(x)"."""
+    """ "body → effect", e.g. "R(x, y) ∧ A(y) → B(x)"."""
     body = " ∧ ".join(format_atom(atom) for atom in rule.body) if rule.body else "⊤"
     return f"{body} → {format_effect(rule)}"
 

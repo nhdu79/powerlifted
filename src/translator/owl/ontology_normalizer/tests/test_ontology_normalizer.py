@@ -72,7 +72,7 @@ from owl.ontology_normalizer import (  # noqa: E402
 from owl.parser import UnsupportedConstructError, parse_owl  # noqa: E402
 
 ASSEMBLY_OWL = _REPO_ROOT / "dev" / "ontologies" / "assembly.owl"
-TTL_OWL = _REPO_ROOT / "dev" / "ontologies" / "TTL.owl"
+DRONES_OWL = _REPO_ROOT / "dev" / "ontologies" / "drones.owl"
 
 FORALL_TTL = """
 @prefix : <http://ex/> .
@@ -198,12 +198,12 @@ class NormalizeAssemblyOntologyTest(unittest.TestCase):
 
 
 class NormalizeTtlOntologyTest(unittest.TestCase):
-    """TTL.owl's disjointWith axioms (Drone/Human, Objectx/Rain) parse as
+    """drones.owl's disjointWith axioms (Drone/Human, Objectx/Rain) parse as
     ConceptInclusion(X, NegatedConcept(Y)); normalize_ontology rewrites them
     to ConceptInclusion(X ⊓ Y, ⊥)."""
 
     def setUp(self):
-        self.ontology = parse_owl(str(TTL_OWL))
+        self.ontology = parse_owl(str(DRONES_OWL))
 
     def test_loads_without_warnings(self):
         self.assertEqual(self.ontology.warnings, [])
@@ -551,8 +551,8 @@ class ClassifyAxiomInvariantsTest(unittest.TestCase):
     def test_assembly_owl(self):
         self._check(ASSEMBLY_OWL)
 
-    def test_ttl_owl(self):
-        self._check(TTL_OWL)
+    def test_drones_owl(self):
+        self._check(DRONES_OWL)
 
 
 if __name__ == "__main__":

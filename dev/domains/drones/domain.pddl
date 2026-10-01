@@ -1,5 +1,5 @@
 ; Drones moving on a grid of cells, with the drone-safety ontology
-; dev/ontologies/TTL.owl (after pddl-horndl's drones benchmark, without its
+; dev/ontologies/drones.owl (after pddl-horndl's drones benchmark, without its
 ; conditional effects, which Powerlifted doesn't support).
 ;
 ; Objects are grid cells: (Drone ?c) means that a drone is at cell ?c.

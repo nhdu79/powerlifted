@@ -322,12 +322,16 @@ class Literal(Condition):
     # Defining __eq__ blocks inheritance of __hash__, so must set it explicitly.
     __hash__ = Condition.__hash__
     parts = []
-    __slots__ = ["predicate", "args", "hash"]
+    __slots__ = ["predicate", "args", "mko", "hash"]
 
-    def __init__(self, predicate, args):
+    # mko: the literal stands for an mko over this atom, i.e. it is
+    # evaluated w.r.t. the lowerbound rules rather than the state (set by
+    # queries.ucq_collector.UCQCollector.replacement).
+    def __init__(self, predicate, args, mko=False):
         self.predicate = predicate
         self.args = tuple(args)
-        self.hash = hash((self.__class__, self.predicate, self.args))
+        self.mko = mko
+        self.hash = hash((self.__class__, self.predicate, self.args, self.mko))
 
     def __eq__(self, other):
         # Compare hash first for speed reasons.
@@ -336,6 +340,7 @@ class Literal(Condition):
             and self.__class__ is other.__class__
             and self.predicate == other.predicate
             and self.args == other.args
+            and self.mko == other.mko
         )
 
     def __ne__(self, other):
@@ -343,7 +348,7 @@ class Literal(Condition):
 
     @property
     def key(self):
-        return str(self.predicate), self.args
+        return str(self.predicate), self.args, self.mko
 
     def __lt__(self, other):
         return self.key < other.key
@@ -358,7 +363,7 @@ class Literal(Condition):
         return "<%s>" % self
 
     def _dump(self):
-        return str(self)
+        return "mko " + str(self) if self.mko else str(self)
 
     def collect_predicates(self, result):
         result.add(self.predicate)
@@ -371,12 +376,12 @@ class Literal(Condition):
 
     def rename_variables(self, renamings):
         new_args = tuple(renamings.get(arg, arg) for arg in self.args)
-        return self.__class__(self.predicate, new_args)
+        return self.__class__(self.predicate, new_args, self.mko)
 
     def replace_argument(self, position, new_arg):
         new_args = list(self.args)
         new_args[position] = new_arg
-        return self.__class__(self.predicate, new_args)
+        return self.__class__(self.predicate, new_args, self.mko)
 
     def free_variables(self):
         return set(arg for arg in self.args if arg[0] == "?")
@@ -397,7 +402,7 @@ class Atom(Literal):
             raise Impossible()
 
     def negate(self):
-        return NegatedAtom(self.predicate, self.args)
+        return NegatedAtom(self.predicate, self.args, self.mko)
 
     def positive(self):
         return self
@@ -418,6 +423,6 @@ class NegatedAtom(Literal):
             raise Impossible()
 
     def negate(self):
-        return Atom(self.predicate, self.args)
+        return Atom(self.predicate, self.args, self.mko)
 
     positive = negate

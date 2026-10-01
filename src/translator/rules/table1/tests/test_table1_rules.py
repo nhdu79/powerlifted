@@ -78,7 +78,7 @@ class TranslateO1Test(unittest.TestCase):
         axiom = ConceptInclusion(IntersectionConcept((A, B)), OWL_NOTHING)
         self.assertEqual(classify_axiom(axiom), O1)
 
-        rule = translate_axiom(axiom, O1)
+        (rule,) = translate_axiom(axiom, O1)
 
         self.assertEqual(rule.body, (Atom("a", ("?x",)), Atom("b", ("?x",))))
         self.assertEqual(rule.effect, ())
@@ -87,7 +87,7 @@ class TranslateO1Test(unittest.TestCase):
         axiom = ConceptInclusion(A, OWL_NOTHING)
         self.assertEqual(classify_axiom(axiom), O1)
 
-        rule = translate_axiom(axiom, O1)
+        (rule,) = translate_axiom(axiom, O1)
 
         self.assertEqual(rule.body, (Atom("a", ("?x",)),))
         self.assertEqual(rule.effect, ())
@@ -98,7 +98,7 @@ class TranslateO2Test(unittest.TestCase):
         axiom = ConceptInclusion(IntersectionConcept((A, B)), UnionConcept((C, D)))
         self.assertEqual(classify_axiom(axiom), O2)
 
-        rule = translate_axiom(axiom, O2)
+        (rule,) = translate_axiom(axiom, O2)
 
         self.assertEqual(rule.body, (Atom("a", ("?x",)), Atom("b", ("?x",))))
         self.assertEqual(rule.effect, (Atom("c", ("?x",)), Atom("d", ("?x",))))
@@ -109,7 +109,7 @@ class TranslateO3Test(unittest.TestCase):
         axiom = ConceptInclusion(QualifiedExistentialConcept(R, A), B)
         self.assertEqual(classify_axiom(axiom), O3)
 
-        rule = translate_axiom(axiom, O3)
+        (rule,) = translate_axiom(axiom, O3)
 
         self.assertEqual(rule.body, (Atom("r", ("?x", "?y")), Atom("a", ("?y",))))
         self.assertEqual(rule.effect, (Atom("b", ("?x",)),))
@@ -120,7 +120,7 @@ class TranslateO4Test(unittest.TestCase):
         axiom = ConceptInclusion(A, SelfConcept(R))
         self.assertEqual(classify_axiom(axiom), O4)
 
-        rule = translate_axiom(axiom, O4)
+        (rule,) = translate_axiom(axiom, O4)
 
         self.assertEqual(rule.body, (Atom("a", ("?x",)),))
         self.assertEqual(rule.effect, (Atom("r", ("?x", "?x")),))
@@ -131,7 +131,7 @@ class TranslateO5Test(unittest.TestCase):
         axiom = ConceptInclusion(SelfConcept(R), A)
         self.assertEqual(classify_axiom(axiom), O5)
 
-        rule = translate_axiom(axiom, O5)
+        (rule,) = translate_axiom(axiom, O5)
 
         self.assertEqual(rule.body, (Atom("r", ("?x", "?x")),))
         self.assertEqual(rule.effect, (Atom("a", ("?x",)),))
@@ -142,7 +142,7 @@ class TranslateO6Test(unittest.TestCase):
         axiom = RoleInclusion(R, S)
         self.assertEqual(classify_axiom(axiom), O6)
 
-        rule = translate_axiom(axiom, O6)
+        (rule,) = translate_axiom(axiom, O6)
 
         self.assertEqual(rule.body, (Atom("r", ("?x", "?y")),))
         self.assertEqual(rule.effect, (Atom("s", ("?x", "?y")),))
@@ -153,7 +153,7 @@ class TranslateO7Test(unittest.TestCase):
         axiom = RoleInclusion(R, InverseRole(S))
         self.assertEqual(classify_axiom(axiom), O7)
 
-        rule = translate_axiom(axiom, O7)
+        (rule,) = translate_axiom(axiom, O7)
 
         self.assertEqual(rule.body, (Atom("r", ("?x", "?y")),))
         self.assertEqual(rule.effect, (Atom("s", ("?y", "?x")),))
@@ -164,7 +164,7 @@ class TranslateO8Test(unittest.TestCase):
         axiom = RoleInclusion(RoleChain((R, S)), T)
         self.assertEqual(classify_axiom(axiom), O8)
 
-        rule = translate_axiom(axiom, O8)
+        (rule,) = translate_axiom(axiom, O8)
 
         self.assertEqual(rule.body, (Atom("r", ("?x", "?z")), Atom("s", ("?z", "?y"))))
         self.assertEqual(rule.effect, (Atom("t", ("?x", "?y")),))
@@ -175,22 +175,28 @@ class TranslateO9Test(unittest.TestCase):
         axiom = RoleInclusion(R, NegatedRole(S))
         self.assertEqual(classify_axiom(axiom), O9)
 
-        rule = translate_axiom(axiom, O9)
+        (rule,) = translate_axiom(axiom, O9)
 
         self.assertEqual(rule.body, (Atom("r", ("?x", "?y")), Atom("s", ("?x", "?y"))))
         self.assertEqual(rule.effect, ())
 
 
 class TranslateO10Test(unittest.TestCase):
-    def test_existential_sup(self):
+    def test_existential_sup_is_normalised_with_a_fresh_head(self):
         axiom = ConceptInclusion(A, QualifiedExistentialConcept(R, B))
         self.assertEqual(classify_axiom(axiom), O10)
 
-        rule = translate_axiom(axiom, O10)
-
-        self.assertEqual(rule.body, (Atom("a", ("?x",)),))
-        self.assertEqual(rule.effect, (Atom("r", ("?x", "?y")), Atom("b", ("?y",))))
-
+        head = Atom("head@exists_r_dot_b", ("?x", "?y"))
+        r_xy, b_y = Atom("r", ("?x", "?y")), Atom("b", ("?y",))
+        self.assertEqual(
+            translate_axiom(axiom, O10),
+            [
+                DisjunctiveExistentialRule(effect=(head,), body=(Atom("a", ("?x",)),)),
+                DisjunctiveExistentialRule(effect=(r_xy,), body=(head,)),
+                DisjunctiveExistentialRule(effect=(b_y,), body=(head,)),
+                DisjunctiveExistentialRule(effect=(head,), body=(r_xy, b_y)),
+            ],
+        )
 
 class TranslateO11Test(unittest.TestCase):
     def test_max_cardinality_needs_n_plus_1_fillers(self):
@@ -198,7 +204,7 @@ class TranslateO11Test(unittest.TestCase):
         axiom = ConceptInclusion(A, MaxCardinalityConcept(R, 2, B))
         self.assertEqual(classify_axiom(axiom), O11)
 
-        rule = translate_axiom(axiom, O11)
+        (rule,) = translate_axiom(axiom, O11)
 
         self.assertEqual(
             rule.body,
@@ -225,7 +231,7 @@ class TranslateO11Test(unittest.TestCase):
         axiom = FunctionalRole(R)
         self.assertEqual(classify_axiom(axiom), O11)
 
-        rule = translate_axiom(axiom, O11)
+        (rule,) = translate_axiom(axiom, O11)
 
         self.assertEqual(
             rule.body,
@@ -246,7 +252,7 @@ class TranslateO12Test(unittest.TestCase):
         axiom = ConceptInclusion(A, Nominal(individual))
         self.assertEqual(classify_axiom(axiom), O12)
 
-        rule = translate_axiom(axiom, O12)
+        (rule,) = translate_axiom(axiom, O12)
 
         self.assertEqual(rule.body, (Atom("a", ("?x",)),))
         self.assertEqual(rule.effect, (Atom("=", ("?x", "a")),))
@@ -257,7 +263,7 @@ class TranslateO13Test(unittest.TestCase):
         axiom = ConceptInclusion(OWL_THING, UniversalConcept(R, A))
         self.assertEqual(classify_axiom(axiom), O13)
 
-        rule = translate_axiom(axiom, O13)
+        (rule,) = translate_axiom(axiom, O13)
 
         self.assertEqual(rule.body, (Atom("r", ("?x", "?y")),))
         self.assertEqual(rule.effect, (Atom("a", ("?y",)),))
@@ -266,46 +272,61 @@ class TranslateO13Test(unittest.TestCase):
         axiom = ConceptInclusion(OWL_THING, InverseUniversalConcept(R, A))
         self.assertEqual(classify_axiom(axiom), O13)
 
-        rule = translate_axiom(axiom, O13)
+        (rule,) = translate_axiom(axiom, O13)
 
         self.assertEqual(rule.body, (Atom("r", ("?x", "?y")),))
         self.assertEqual(rule.effect, (Atom("a", ("?x",)),))
 
 
 class TranslateO14Test(unittest.TestCase):
-    def test_min_cardinality_needs_n_fillers_marked_pairwise_neq(self):
+    def test_min_cardinality_is_normalised_with_n_fillers_marked_pairwise_neq(self):
         axiom = ConceptInclusion(A, MinCardinalityConcept(R, 3, B))
         self.assertEqual(classify_axiom(axiom), O14)
 
-        rule = translate_axiom(axiom, O14)
+        rules = translate_axiom(axiom, O14)
 
-        self.assertEqual(rule.body, (Atom("a", ("?x",)),))
-        self.assertEqual(
-            rule.effect,
-            (
-                Atom("r", ("?x", "?y1")),
-                Atom("b", ("?y1",)),
-                Atom("r", ("?x", "?y2")),
-                Atom("b", ("?y2",)),
-                Atom("r", ("?x", "?y3")),
-                Atom("b", ("?y3",)),
-                Atom("neq_", ("?y1", "?y2")),
-                Atom("neq_", ("?y1", "?y3")),
-                Atom("neq_", ("?y2", "?y3")),
-            ),
+        head = Atom("head@mincard_3_r_dot_b", ("?x", "?y1", "?y2", "?y3"))
+        phi = (
+            Atom("r", ("?x", "?y1")),
+            Atom("b", ("?y1",)),
+            Atom("r", ("?x", "?y2")),
+            Atom("b", ("?y2",)),
+            Atom("r", ("?x", "?y3")),
+            Atom("b", ("?y3",)),
+            Atom("neq@", ("?y1", "?y2")),
+            Atom("neq@", ("?y1", "?y3")),
+            Atom("neq@", ("?y2", "?y3")),
         )
-        self.assertFalse(any(atom.negated for atom in rule.effect))
+        self.assertEqual(
+            rules,
+            [DisjunctiveExistentialRule(effect=(head,), body=(Atom("a", ("?x",)),))]
+            + [DisjunctiveExistentialRule(effect=(atom,), body=(head,)) for atom in phi]
+            + [DisjunctiveExistentialRule(effect=(head,), body=phi)],
+        )
+        for rule in rules:
+            self.assertFalse(any(atom.negated for atom in rule.effect + rule.body))
 
-    def test_n_equals_1_degenerates_to_o10_shape(self):
-        # A ⊑ >=1 R.B has only one filler, so no neq_ atom at all.
+    def test_every_rule_is_normalised(self):
+        # Forms (2)-(4), Zhou et al. 2015, page 5: at most one effect atom
+        # here, as none of these rules is disjunctive.
+        axiom = ConceptInclusion(A, MinCardinalityConcept(R, 2, B))
+
+        for rule in translate_axiom(axiom, O14):
+            self.assertEqual(len(rule.effect), 1)
+
+    def test_n_equals_1_is_o10(self):
+        # A ⊑ >=1 R.B is A ⊑ ∃R.B: same rules, same head predicate.
         axiom = ConceptInclusion(A, MinCardinalityConcept(R, 1, B))
+        o10 = ConceptInclusion(A, QualifiedExistentialConcept(R, B))
 
-        rule = translate_axiom(axiom, O14)
+        self.assertEqual(translate_axiom(axiom, O14), translate_axiom(o10, O10))
 
-        self.assertEqual(rule.body, (Atom("a", ("?x",)),))
-        self.assertEqual(
-            rule.effect, (Atom("r", ("?x", "?y1")), Atom("b", ("?y1",)))
-        )
+    def test_n_equals_0_is_a_tautology_not_bottom(self):
+        # A ⊑ >=0 R.B is A ⊑ ⊤; an empty effect would read as A(x) → ⊥.
+        axiom = ConceptInclusion(A, MinCardinalityConcept(R, 0, B))
+        self.assertEqual(classify_axiom(axiom), O14)
+
+        self.assertEqual(translate_axiom(axiom, O14), [])
 
 
 class NeqDenialRulesTest(unittest.TestCase):
@@ -315,11 +336,11 @@ class NeqDenialRulesTest(unittest.TestCase):
             [
                 DisjunctiveExistentialRule(
                     effect=(),
-                    body=(Atom("neq_", ("?y", "?z")), Atom("=", ("?y", "?z"))),
+                    body=(Atom("neq@", ("?y", "?z")), Atom("=", ("?y", "?z"))),
                 ),
                 DisjunctiveExistentialRule(
                     effect=(),
-                    body=(Atom("neq_", ("?y", "?z")), Atom("=", ("?z", "?y"))),
+                    body=(Atom("neq@", ("?y", "?z")), Atom("=", ("?z", "?y"))),
                 ),
             ],
         )

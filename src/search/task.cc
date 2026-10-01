@@ -94,10 +94,15 @@ void Task::dump_goal()
 
 void Task::create_goal_condition(std::vector<AtomicGoal> goals,
                                  std::unordered_set<int> nullary_goals,
-                                 std::unordered_set<int> negative_nullary_goals)
+                                 std::unordered_set<int> negative_nullary_goals,
+                                 std::unordered_set<int> nullary_mko_goals,
+                                 std::unordered_set<int> negative_nullary_mko_goals)
 {
-    goal = GoalCondition(
-        std::move(goals), std::move(nullary_goals), std::move(negative_nullary_goals));
+    goal = GoalCondition(std::move(goals),
+                         std::move(nullary_goals),
+                         std::move(negative_nullary_goals),
+                         std::move(nullary_mko_goals),
+                         std::move(negative_nullary_mko_goals));
 }
 
 void Task::initialize_action_schemas(const std::vector<ActionSchema> &action_list)

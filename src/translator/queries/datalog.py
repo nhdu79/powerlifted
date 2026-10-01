@@ -11,7 +11,7 @@ from pddl import Atom, Predicate, TypedObject
 from rules import DisjunctiveExistentialRule
 from rules.atoms import EQUALITY_PREDICATE
 
-from .naming import get_query_id, prime_predicate_name, query_predicate_name
+from .naming import get_query_id, query_predicate_name
 
 
 def _map_predicates(rule, fn):
@@ -118,56 +118,24 @@ def filter_irrelevant_rules(rules, queried_predicates, num_ucqs):
     return relevant, irrelevant
 
 
-def derived_predicates(rules):
-    """Every predicate some rule derives."""
-    return {a.predicate for rule in rules for a in rule.effect}
+def predicate_declarations(rules, task_predicates):
+    """pddl.Predicate declarations, with untyped arguments, of the predicates
+    the rules use that the task doesn't declare (e.g. the QUERY<i> heads and
+    the ontology's own and generated names), in name order.
 
-
-def compile_rules(rules, task_predicates):
-    """Separate what the ontology entails from what the state holds.
-
-    Every derived predicate P is primed (DATALOG_P) wherever it occurs, so
-    the rules never write into the task's own predicates; a predicate no
-    rule derives is read straight from the state. For a derived P that is
-    also a task predicate, a copy rule P(x..) -> DATALOG_P(x..) feeds the
-    state's P-atoms into the primed version.
-
-    Returns (rules, new_predicates): the compiled rules and the
-    pddl.Predicate declarations of the primed predicates.
+    Rules read and derive the task's predicates under their own names: the
+    search tells an mko-flagged atom (evaluated w.r.t. the rules) apart from
+    a plain one (evaluated on the state), so no primed copy is needed.
     """
-    derived = derived_predicates(rules)
+    declared = {p.name for p in task_predicates}
     arity = {}
-
-    def prime(a):
-        if a.predicate not in derived:
-            return a
-        arity[a.predicate] = len(a.args)
-        return a.__class__(prime_predicate_name(a.predicate), a.args)
-
-    compiled = [
-        DisjunctiveExistentialRule(
-            effect=tuple(prime(a) for a in rule.effect),
-            body=tuple(prime(a) for a in rule.body),
-        )
-        for rule in rules
-    ]
-
-    task_arity = {p.name: len(p.arguments) for p in task_predicates}
-    for name in sorted(derived & set(task_arity)):
-        args = tuple(f"?x{i}" for i in range(task_arity[name]))
-        compiled.append(
-            DisjunctiveExistentialRule(
-                effect=(Atom(prime_predicate_name(name), args),),
-                body=(Atom(name, args),),
-            )
-        )
-
-    return compiled, [primed_predicate(name, arity[name]) for name in sorted(arity)]
+    for rule in rules:
+        for a in rule.body + rule.effect:
+            if a.predicate not in declared and a.predicate != EQUALITY_PREDICATE:
+                arity[a.predicate] = len(a.args)
+    return [untyped_predicate(name, arity[name]) for name in sorted(arity)]
 
 
-def primed_predicate(name, arity):
-    """Declaration of DATALOG_<name>, with untyped arguments."""
-    return Predicate(
-        prime_predicate_name(name),
-        [TypedObject(f"?x{i}", "object") for i in range(arity)],
-    )
+def untyped_predicate(name, arity):
+    """Declaration of name, with untyped arguments."""
+    return Predicate(name, [TypedObject(f"?x{i}", "object") for i in range(arity)])
