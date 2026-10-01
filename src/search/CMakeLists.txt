@@ -152,7 +152,6 @@ endif()
 
 target_link_libraries(search PRIVATE project_options)
 target_link_libraries(datalog_test PRIVATE project_options)
-<<<<<<< Updated upstream
 target_link_libraries(c_chase_test PRIVATE project_options)
 target_link_libraries(search PRIVATE project_options Konclude)
 set_target_properties(search PROPERTIES

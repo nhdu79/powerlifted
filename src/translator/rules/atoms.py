@@ -23,9 +23,23 @@ Z = "?z"
 # pddl_parser/parsing_functions.py's handling of `(= ?x ?y)`); reused
 # here for O11/O12/O14's equality/inequality atoms.
 EQUALITY_PREDICATE = "="
+# Predicates only the Table 1 rules use, never Clipper (which only takes an
+# ontology and conjunctive queries). Like the translator's own type@<type>,
+# they contain "@", which no (normalized) OWL name contains and standard
+# PDDL doesn't allow — though the PDDL parser accepts it, so
+# queries.names.check_names reserves them (see is_reserved_rule_predicate).
+#
 # Pairwise distinctness of O14's fillers (see table1_rules.translate_o14).
-# Ends in "_" like every generated name, so it can't clash with a user name.
-NEQ_PREDICATE = "neq_"
+NEQ_PREDICATE = "neq@"
+# Prefix of the fresh head predicate that normalises an O10/O14 rule (see
+# table1_rules._normalized_existential); followed by the id of the
+# restriction it stands for.
+HEAD_PREDICATE_PREFIX = "head@"
+
+
+def is_reserved_rule_predicate(name: str) -> bool:
+    """True for NEQ_PREDICATE and every HEAD_PREDICATE_PREFIX name."""
+    return name == NEQ_PREDICATE or name.startswith(HEAD_PREDICATE_PREFIX)
 
 
 def concept_atom(concept: AtomicConcept, var: str) -> Atom:

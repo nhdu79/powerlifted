@@ -26,6 +26,10 @@ class ActionSchema {
      */
     std::vector<bool> positive_nullary_precond;
     std::vector<bool> negative_nullary_precond;
+    // Nullary preconditions standing for an mko (see Atom::is_mko), kept
+    // apart as they are evaluated w.r.t. the lowerbound rules.
+    std::vector<bool> positive_nullary_mko_precond;
+    std::vector<bool> negative_nullary_mko_precond;
     std::vector<bool> positive_nullary_effects;
     std::vector<bool> negative_nullary_effects;
 
@@ -40,6 +44,8 @@ public:
                           std::vector<Atom> static_precondition,
                           std::vector<bool> positive_nullary_precond,
                           std::vector<bool> negative_nullary_precond,
+                          std::vector<bool> positive_nullary_mko_precond,
+                          std::vector<bool> negative_nullary_mko_precond,
                           std::vector<bool> positive_nullary_effects,
                           std::vector<bool> negative_nullary_effects);
 
@@ -81,6 +87,14 @@ public:
 
     const std::vector<bool> &get_negative_nullary_precond() const {
         return negative_nullary_precond;
+    }
+
+    const std::vector<bool> &get_positive_nullary_mko_precond() const {
+        return positive_nullary_mko_precond;
+    }
+
+    const std::vector<bool> &get_negative_nullary_mko_precond() const {
+        return negative_nullary_mko_precond;
     }
 
     const std::vector<bool> &get_positive_nullary_effects() const {

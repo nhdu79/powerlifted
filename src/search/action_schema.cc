@@ -10,6 +10,8 @@ ActionSchema::ActionSchema(std::string name, int index, int cost,
                            std::vector<Atom> static_precondition,
                            std::vector<bool> positive_nullary_precond,
                            std::vector<bool> negative_nullary_precond,
+                           std::vector<bool> positive_nullary_mko_precond,
+                           std::vector<bool> negative_nullary_mko_precond,
                            std::vector<bool> positive_nullary_effects,
                            std::vector<bool> negative_nullary_effects) :
         name(std::move(name)), index(index), cost(cost),
@@ -20,6 +22,8 @@ ActionSchema::ActionSchema(std::string name, int index, int cost,
         static_precondition(std::move(static_precondition)),
         positive_nullary_precond(std::move(positive_nullary_precond)),
         negative_nullary_precond(std::move(negative_nullary_precond)),
+        positive_nullary_mko_precond(std::move(positive_nullary_mko_precond)),
+        negative_nullary_mko_precond(std::move(negative_nullary_mko_precond)),
         positive_nullary_effects(std::move(positive_nullary_effects)),
         negative_nullary_effects(std::move(negative_nullary_effects)) {}
 
