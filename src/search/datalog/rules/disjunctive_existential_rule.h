@@ -29,6 +29,16 @@ protected:
     RuleBody body;
     int index;
 
+    // in case there are multiple effect atoms with different variables, or a
+    // variable occurs twice in the effect atom, we pre-compute a "merged"
+    // argument vector that can be used in the "instantiate" methods
+    Arguments merged_effect_arguments;
+    // indicates whether merging took place or not
+    bool uniform_unique_effect_arguments;
+    // in that case, we then also need to map the original effect atoms back
+    // from the merged effect arguments (after instantiation)
+    std::vector<std::vector<int>> map_orig_args;
+    // map every effect variable to its unique position in the merged effect arguments
     MapVariablePosition variable_position;
     // map every position of every head atom to a constant
     std::vector<std::vector<int>> skolem_mapping;
@@ -43,26 +53,51 @@ public:
           index(next_index++)
     {
         existential_variables = false;
-        if (effect.size() > 0) {
-            // variable map is computed from the first atom, because all atoms have the same arguments
-            variable_position.create_map(effect[0]);
-            std::vector<Term> body_terms;
-            for (const DatalogAtom &cond : ((RuleBodyBase &)body).get_conditions()) {
-                for(const Term &t : cond.get_arguments()) {
-                    body_terms.emplace_back(t);
-                }
+        std::vector<Term> body_terms;
+        for (const DatalogAtom &cond : ((RuleBodyBase &)body).get_conditions()) {
+            for(const Term &t : cond.get_arguments()) {
+                body_terms.emplace_back(t);
             }
-            for (const Term &t : effect[0].get_arguments()) {
+        }
+        map_orig_args.resize(effect.size());
+        int eff_idx = 0;
+        for (const DatalogAtom &eff: effect) {
+            Arguments args = eff.get_arguments();
+            for (const Term &t : args) {
+                // populate merged_effect_arguments and map_orig_args
+                int idx = utils::index_of(merged_effect_arguments, t);
+                if (idx == -1) {
+                    idx = merged_effect_arguments.size();
+                    merged_effect_arguments.push_back(t);
+                }
+                map_orig_args[eff_idx].push_back(idx);
+
+                // check for existential variables
                 if (!t.is_object()) {
                     if (!utils::contains(body_terms, t)) {
                         existential_variables = true;
                     }
                 }
             }
+            ++eff_idx;
         }
-        skolem_mapping.resize(effect.size());
-        for (size_t atom_idx = 0; atom_idx < effect.size(); ++atom_idx) {
-            skolem_mapping[atom_idx].resize(effect[atom_idx].get_arguments().size());
+
+        // check whether all effect atoms use the same variables with unique positions (if yes, we don't need to use map_orig_args later)
+        uniform_unique_effect_arguments = true;
+        for (const DatalogAtom &eff : effect) {
+            if (eff.get_arguments() != merged_effect_arguments) {
+                uniform_unique_effect_arguments = false;
+                break;
+            }
+        }
+
+        variable_position.create_map(merged_effect_arguments);
+
+        if (existential_variables) {
+            skolem_mapping.resize(effect.size());
+            for (size_t atom_idx = 0; atom_idx < effect.size(); ++atom_idx) {
+                skolem_mapping[atom_idx].resize(effect[atom_idx].get_arguments().size());
+            }
         }
     }
 
@@ -101,24 +136,27 @@ public:
     int get_index() const { return index; }
 
     const Arguments &get_effect_arguments() const {
-        if (effect.size() > 0) {
-            return effect[0].get_arguments();
-        } else {
-            static const Arguments empty{};
-            return empty;
-        }
+        return merged_effect_arguments;
+    }
+
+    const bool has_uniform_unique_effect_arguments() const {
+        return uniform_unique_effect_arguments;
+    }
+
+    const std::vector<std::vector<int>> get_map_orig_args() const {
+        return map_orig_args;
     }
 
     const MapVariablePosition get_variable_position_map() const { return variable_position; }
 
     bool has_existential_variables() const { return existential_variables; }
 
-    int get_skolem_constant(int atom_idx, int position) const {
-        return skolem_mapping[atom_idx][position];
+    int get_skolem_constant(int eff_idx, int position) const {
+        return skolem_mapping[eff_idx][position];
     }
 
-    void set_skolem_mapping(int atom_idx, int position, int object) {
-        skolem_mapping[atom_idx][position] = object;
+    void set_skolem_mapping(int eff_idx, int position, int object) {
+        skolem_mapping[eff_idx][position] = object;
     }
 
 };

@@ -22,7 +22,9 @@ int main(int argc, char *argv[]) {
     predicates.emplace_back("greennode", 12, 1, false, vector(1, 0));
     predicates.emplace_back("rednode", 13, 1, false, vector(1, 0));
     predicates.emplace_back("bluenode", 14, 1, false, vector(1, 0));
-
+    predicates.emplace_back("eq", 15, 2, false, vector(2, 0));
+    predicates.emplace_back("marked_node", 16, 1, false, vector(1, 0));
+    
     vector<datalog::Object> objects;
     objects.emplace_back("a");
     objects.emplace_back("b");
@@ -70,8 +72,8 @@ int main(int argc, char *argv[]) {
     DatalogAtom greenz(Arguments{z}, 9, false);
     DatalogAtom greenw(Arguments{w}, 9, false);
     rules.push_back(make_unique<DisjunctiveExistentialRule>(vector<DatalogAtom>{}, RuleBody(GenericBody{edgexy, hascolorxz, hascoloryw, greenz, greenw})));
-    DatalogAtom edgexx(Arguments{x, x}, 0, false);
-    rules.push_back(make_unique<DisjunctiveExistentialRule>(interestingx, RuleBody(GenericBody{edgexx})));
+    DatalogAtom eqxy(Arguments{x, y}, 15, false);
+    rules.push_back(make_unique<DisjunctiveExistentialRule>(interestingx, RuleBody(GenericBody{reachxy, eqxy})));
     DatalogAtom hascoloryx(Arguments{y, x}, 7, false);
     DatalogAtom greennodey(Arguments{y}, 12, false);
     rules.push_back(make_unique<DisjunctiveExistentialRule>(greennodey, RuleBody(GenericBody{hascoloryx, greenx})));
@@ -79,6 +81,14 @@ int main(int argc, char *argv[]) {
     rules.push_back(make_unique<DisjunctiveExistentialRule>(rednodey, RuleBody(GenericBody{hascoloryx, redx})));
     DatalogAtom bluenodey(Arguments{y}, 14, false);
     rules.push_back(make_unique<DisjunctiveExistentialRule>(bluenodey, RuleBody(GenericBody{hascoloryx, bluex})));
+
+    // test heads with multiple occurences of the same variable
+    DatalogAtom eqxx(Arguments{x, x}, 15, false);
+    rules.push_back(make_unique<DisjunctiveExistentialRule>(eqxx, RuleBody(GenericBody{nodex})));
+    // test heads with multiple atoms that don't have the same arguments
+    DatalogAtom marked_nodex(Arguments{x}, 16, false);
+    DatalogAtom marked_nodey(Arguments{y}, 16, false);
+    rules.push_back(make_unique<DisjunctiveExistentialRule>(vector<DatalogAtom>{marked_nodex, marked_nodey}, RuleBody(GenericBody{edgexy})));
 
     DisjunctiveExistentialProgram program(predicates, objects, std::move(rules));
     program.convert_rules_to_normal_form();
@@ -89,7 +99,7 @@ int main(int argc, char *argv[]) {
     program.output_rules();
     program.print_statistics();
     vector<Fact> nlbf;
-    CChase engine(program, nlbf);
+    CChase engine(program);
     
     vector<Fact> database;
     Term a(0, TERM_TYPES::OBJECT);
@@ -97,35 +107,61 @@ int main(int argc, char *argv[]) {
     Term c(2, TERM_TYPES::OBJECT);
     Term d(3, TERM_TYPES::OBJECT);
     Term e(4, TERM_TYPES::OBJECT);
-    // node(.) facts -- are derived
-    // database.emplace_back(Arguments(vector<Term>{a}), 2, false);
-    // database.emplace_back(Arguments(vector<Term>{b}), 2, false);
-    // database.emplace_back(Arguments(vector<Term>{c}), 2, false);
-    // database.emplace_back(Arguments(vector<Term>{d}), 2, false);
-    // database.emplace_back(Arguments(vector<Term>{e}), 2, false);
     // edge(.,.) facts
-    database.emplace_back(Arguments{a, b}, 0, false);
-    database.emplace_back(Arguments{a, c}, 0, false);
+    database.emplace_back(Arguments{d, e}, 0, false);
+    database.emplace_back(Arguments{d, c}, 0, false);
     database.emplace_back(Arguments{b, d}, 0, false);
     database.emplace_back(Arguments{c, d}, 0, false);
-    database.emplace_back(Arguments{d, c}, 0, false);
-    database.emplace_back(Arguments{d, e}, 0, false);
-    // interesting(.) facts
-    database.emplace_back(Arguments{c}, 1, false);
-    database.emplace_back(Arguments{d}, 1, false);
+    database.emplace_back(Arguments{a, b}, 0, false);
+    database.emplace_back(Arguments{a, c}, 0, false);
 
-    cout << "Program inconsistent: " <<  engine.upper_bound_bottom_query(database) << endl;
+    cout << "Program inconsistent: " <<  engine.upper_bound_bottom_query(database, nlbf) << endl;
     cout << "Upper bound:" << endl;
-    for (Fact f : engine.upper_bound_query(database)) {
+    vector<Fact> derived_facts = engine.upper_bound_query(database, nlbf);
+    for (Fact f : derived_facts) {
         program.output_fact(f);
         cout << endl;
     }
     engine.print_statistics();
-
+    // cout << "Internal facts:" << endl;
     // for (Fact f : program.get_facts()) {
     //     program.output_fact(f);
     //     cout << endl;
     // }
+
+    cout << endl;
+    vector<Fact> true_facts;
+    vector<Fact> false_facts;
+    true_facts.emplace_back(Arguments{a}, 2, false);
+    true_facts.emplace_back(Arguments{c}, 1, false);
+    false_facts.emplace_back(Arguments{b}, 1, false);
+    false_facts.emplace_back(Arguments{a}, 4, false);
+    true_facts.emplace_back(Arguments{c}, 4, false);
+    true_facts.emplace_back(Arguments{e}, 4, false);
+    true_facts.emplace_back(Arguments{c}, 5, false);
+    false_facts.emplace_back(Arguments{b}, 5, false);
+    false_facts.emplace_back(Arguments{e}, 5, false);
+    true_facts.emplace_back(Arguments{c, d}, 6, false);
+    false_facts.emplace_back(Arguments{b, c}, 6, false);
+    false_facts.emplace_back(Arguments{a}, 12, false);
+    true_facts.emplace_back(Arguments{a}, 13, false);
+    false_facts.emplace_back(Arguments{a}, 14, false);
+    true_facts.emplace_back(Arguments{a, a}, 15, false);
+    true_facts.emplace_back(Arguments{a}, 16, false);
+    false_facts.emplace_back(Arguments{b}, 16, false);
+    false_facts.emplace_back(Arguments{c}, 16, false);
+    true_facts.emplace_back(Arguments{d}, 16, false);
+    true_facts.emplace_back(Arguments{e}, 16, false);
+    cout << "These should be true:" << endl;
+    for (Fact f : true_facts) {
+        program.output_fact(f);
+        cout << ": " << utils::contains(derived_facts, f) << endl;
+    }
+    cout << "These should be false:" << endl;
+    for (Fact f : false_facts) {
+        program.output_fact(f);
+        cout << ": " << utils::contains(derived_facts, f) << endl;
+    }
 
     return 0;
 }

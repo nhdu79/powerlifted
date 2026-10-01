@@ -43,8 +43,6 @@ class DisjunctiveExistentialProgram {
         return idx;
     }
 
-    void output_parameters(const Arguments& v) const;
-
     std::unique_ptr<DisjunctiveExistentialRule> convert_into_project_rule(const std::unique_ptr<DisjunctiveExistentialRule> &rule);
 
     std::unique_ptr<DisjunctiveExistentialRule> convert_into_product_rule(const std::unique_ptr<DisjunctiveExistentialRule> &rule);
@@ -85,6 +83,8 @@ public:
     void output_rules() const {
         for (const auto &rule : rules) output_rule(*rule);
     }
+
+    void output_parameters(const Arguments& v) const;
 
     const std::vector<Fact> &get_facts() const;
 

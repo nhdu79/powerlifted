@@ -12,9 +12,15 @@
 
 namespace utils {
 
-template<class C, class U>
-bool contains(const C &con, const U &obj) {
+template<class C, class O>
+bool contains(const C &con, const O &obj) {
     return std::find(con.begin(), con.end(), obj) != con.end();
+}
+
+template <class C, class O>
+std::ptrdiff_t index_of(const C& con, const O& obj) {
+    auto it = std::find(con.begin(), con.end(), obj);
+    return it == con.end() ? -1 : std::distance(con.begin(), it);
 }
 
 template<class T>

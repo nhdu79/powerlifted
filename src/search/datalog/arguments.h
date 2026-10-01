@@ -52,6 +52,8 @@ public:
 
     void push_back(int i, int j) { arguments.emplace_back(i, j); };
 
+    void push_back(Term t) { arguments.push_back(t); }
+
     void set_term_to_object(int i, int j) { arguments[i].set_term_to_object(j); }
 
     bool is_object(std::size_t i) const { return arguments[i].is_object(); }

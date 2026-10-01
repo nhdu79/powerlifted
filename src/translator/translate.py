@@ -116,7 +116,7 @@ def main():
     with timers.timing("Removing unused predicate symbols"):
         remove_static_predicates_from_goal(task, static_pred)
 
-    with timers.timing("Processing ontology and minimum knowledge opearots"):
+    with timers.timing("Processing ontology and minimal knowledge operators"):
         ontology.process_ontology(task, options.ontology)
 
     with timers.timing("Printing names and representation type"):

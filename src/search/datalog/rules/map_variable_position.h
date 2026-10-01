@@ -18,24 +18,24 @@ class MapVariablePosition {
 public:
     MapVariablePosition() = default;
 
-    void create_map(const DatalogAtom &effect)
+    void create_map(const Arguments &args)
     {
         mapping.clear();
         int position_counter = 0;
-        for (const auto &eff : effect.get_arguments()) {
-            if (!eff.is_object()) {
+        for (const auto &arg : args) {
+            if (!arg.is_object()) {
                 // Free variable: overwrite an earlier occurrence so the last
                 // position wins, matching the previous map semantics.
                 bool found = false;
                 for (auto &p : mapping) {
-                    if (p.first == eff) {
+                    if (p.first == arg) {
                         p.second = position_counter;
                         found = true;
                         break;
                     }
                 }
                 if (!found) {
-                    mapping.emplace_back(eff, position_counter);
+                    mapping.emplace_back(arg, position_counter);
                 }
             }
             ++position_counter;

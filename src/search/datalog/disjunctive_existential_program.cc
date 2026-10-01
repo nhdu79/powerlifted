@@ -21,33 +21,35 @@ DisjunctiveExistentialProgram::DisjunctiveExistentialProgram(vector<Predicate> &
 
 void DisjunctiveExistentialProgram::generate_skolem_constants() {
     for (auto &rule : rules) {
-        // collect all body variables
-        std::vector<Term> condition_variables;
-        for (const auto &condition: rule->get_conditions()) {
-            for (const auto &t: condition.get_arguments()) {
-                if (!t.is_object() && !utils::contains(condition_variables, t)) {
-                    condition_variables.emplace_back(t);
-                }
-            }
-        }
-
-        // select head positions that do not contain a body variable and generate a unique constant for each variable
-        int atom_idx = 0;
-        for (const auto &effect_atom : rule->get_effect()) {
-            int position = 0;
-            std::unordered_map<Term, int> skolem_constants;
-            for (const auto &t : effect_atom.get_arguments()) {
-                if (!t.is_object() && !utils::contains(condition_variables, t)) {
-                    auto it = skolem_constants.find(t);
-                    if (it == skolem_constants.end()) {
-                        it = skolem_constants.emplace(t, create_new_skolem_constant()).first;
+        if (rule->has_existential_variables()) {
+            // collect all body variables
+            std::vector<Term> condition_variables;
+            for (const auto &condition: rule->get_conditions()) {
+                for (const auto &t: condition.get_arguments()) {
+                    if (!t.is_object() && !utils::contains(condition_variables, t)) {
+                        condition_variables.emplace_back(t);
                     }
-                    int &idx = it->second;
-                    rule->set_skolem_mapping(atom_idx, position, idx);
                 }
-                ++position;
             }
-            ++atom_idx;
+
+            // select head positions that do not contain a body variable and generate a unique constant for each variable
+            int atom_idx = 0;
+            for (const auto &effect_atom : rule->get_effect()) {
+                int position = 0;
+                std::unordered_map<Term, int> skolem_constants;
+                for (const auto &t : effect_atom.get_arguments()) {
+                    if (!t.is_object() && !utils::contains(condition_variables, t)) {
+                        auto it = skolem_constants.find(t);
+                        if (it == skolem_constants.end()) {
+                            it = skolem_constants.emplace(t, create_new_skolem_constant()).first;
+                        }
+                        int &idx = it->second;
+                        rule->set_skolem_mapping(atom_idx, position, idx);
+                    }
+                    ++position;
+                }
+                ++atom_idx;
+            }
         }
     }
 }
@@ -108,9 +110,13 @@ void DisjunctiveExistentialProgram::output_rule(const DisjunctiveExistentialRule
             cout << ", ";
         }
         else {
-            cout << " [" << rule.get_body().get_type_name() << ", index:" << rule.get_index() << "]." << endl;
+            cout << " [" << rule.get_body().get_type_name() << ", index:" << rule.get_index() << "].";
         }
     }
+    cout << " " << rule.get_map_orig_args() << (rule.has_existential_variables() ? " ∃" : "") << endl;
+    // for (const auto &map : rule.get_map_orig_args()) {
+    //     cout << map << endl;
+    // }
     // rule.get_body().output_variable_table();
 }
 

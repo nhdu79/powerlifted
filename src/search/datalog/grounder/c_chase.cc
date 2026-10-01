@@ -5,110 +5,192 @@ using namespace std;
 namespace datalog {
 
 
-void CChase::add_fact(const DisjunctiveExistentialRule &rule, int head_index, Arguments &instantiation) {
- 
-    DatalogAtom head_atom = rule.get_effect()[head_index];
-    int predicate_index = head_atom.get_predicate_index();
+void CChase::add_fact(const DisjunctiveExistentialRule &rule, Fact &fact) {
+    // we assume here that the fact has already been added to reached_atoms
+    // (e.g. while checking whether it is already contained)
+    fact.set_fact_index();
+    program.insert_fact(fact);
+    // cout << "Added fact ";
+    // program.output_fact(fact);
+    // cout << " due to rule ";
+    // program.output_rule(rule);
+    q.push(fact.get_fact_index());
+}
+
+void CChase::check_and_add_atom(const DisjunctiveExistentialRule &rule, int head_index, const Arguments &instantiation, bool ground) {
+
+    // single atom, instantiation may be partial
+    const DatalogAtom &atom = rule.get_effect()[head_index];
+    int predicate_index = atom.get_predicate_index();
 
     bool found = true;
     Fact instantiated_atom(instantiation,
         predicate_index,
-        head_atom.is_pred_symbol_new());
+        atom.is_pred_symbol_new());
     // combines find() and insert() into one hash-iterate operation -- see weighted_grounder.cc
-    // doesn't change reached_facts if the new_fact is already present
+    // doesn't change reached_atoms if the new_fact is already present
     reached_atoms.lazy_emplace(instantiated_atom, [&](const auto &ctor) {
+        // TODO: EQ: this uses a syntactic equality check, so we may add facts P(a,b) and P(a,c) even though =(b,c) holds
         ctor(instantiated_atom);
         found = false;
     });
-    if (!found) {
-        if (rule.has_existential_variables()) {
-            // do restricted chase check (try to find an instance of instantiated_atom)
-            // TODO: here, it would also be useful to store the generated facts not a single flat vector/hashmap,
-            // but organized by predicates (as "tables") -- see also the "Datalog first" issue below
-            for (const Fact &known_fact : program.get_facts()) {
-                if (known_fact.get_predicate_index() == predicate_index) {
-                    found = true;
-                    Arguments other_args = known_fact.get_arguments();
-                    int position = 0;
-                    for (const Term &t : instantiation) {
-                        if (t.is_object()) {
-                            if (t.get_index() != other_args[position].get_index()) {
-                                found = false;
-                            }
-                        }
-                        ++position;
-                    }
-                    if (found) {
-                        break;
-                    }
-                }
-            }
+    if (!found && !ground) {
+        // restricted chase check with existentially quantified variables
+        // TODO: here, it would also be useful to store the generated facts not a in single flat vector/hashmap,
+        // but organized by predicates (as "tables") -- see also the "Datalog first" issue
 
-            if (!found) { // we need to add the Skolemized instance (c-chase)
-                // replace remaining variables in instantiated_atom by Skolem constants
+        // cout << "Checking rule application: ";
+        // program.output_rule(rule);
+        // program.output_parameters(instantiation);
+        // cout << endl;
+        // program.output_atom(instantiated_atom);
+        // cout << endl;
+
+        // we cannot use reached_atoms for this loop, because we have just added instantiated_atom into it
+        for (const Fact &known_fact : program.get_facts()) {
+            if (known_fact.get_predicate_index() == predicate_index) {
+                found = true;
+                Arguments other_args = known_fact.get_arguments();
                 int position = 0;
                 for (const Term &t : instantiation) {
-                    if (!t.is_object()) {
-                        int skolem_constant = rule.get_skolem_constant(head_index, position);
-                        instantiated_atom.set_term_to_object(position, skolem_constant);
+                    if (t.is_object()) {
+                        // TODO: EQ: don't just check for syntactic equality here, but check the equality predicate =(x,y)
+                        if (t.get_index() != other_args[position].get_index()) {
+                            found = false;
+                            break;
+                        }
                     }
                     ++position;
                 }
+                if (found) {
+                    // cout << "Found matching atom: ";
+                    // program.output_atom(known_fact);
+                    // cout << endl;
+                    return;
+                }
             }
+        }
+
+        // cout << "Didn't find matching atom" << endl;
+
+        if (!found) {
+            // replace remaining variables in instantiated_atom by Skolem constants
+            int position = 0;
+            for (const Term &t : instantiation) {
+                if (!t.is_object()) {
+                    int skolem_constant = rule.get_skolem_constant(head_index, position);
+                    instantiated_atom.set_term_to_object(position, skolem_constant);
+                }
+                ++position;
+            }
+
+            // cout << "Fully instantiated atom:";
+            // program.output_atom(instantiated_atom);
+            // cout << endl;
         }
     }
 
-    if (!found) { // add the new (Skolemized) fact since the rule application is not blocked
-        instantiated_atom.set_fact_index();
-        program.insert_fact(instantiated_atom);
-        // cout << "Added fact ";
-        // program.output_fact(instantiated_atom);
-        // cout << " due to rule ";
-        // program.output_rule(rule);
-        q.push(instantiated_atom.get_fact_index());
+    if (!found) {
+        // add the new (possibly Skolemized) fact since the rule application is not blocked
+        add_fact(rule, instantiated_atom);
     }
 }
 
-int CChase::choice_function(const std::vector<DatalogAtom> &effect, const Arguments &instantiation) {
+int CChase::choice_function(const std::vector<DatalogAtom> &effect, const std::vector<Fact> &instantiated_facts, std::vector<Fact> &negated_lower_bound) {
     // Instantiation should be ground due to the normal form (disjunctive rules have no existential variables).
-    // Prefer atoms with predicates that are "further away" from \bot in the dependency graph. -- program.get_distances_to_bottom()
-    // If a fact of the form \overline{P}(a) is derived by L_1, then try to avoid deriving P(a). -- negated_lower_bound_facts
+    // Even if not, it shouldn't be problematic, but the negated lower bound does not provide much guidance in that case.
+
+    // Prefer atoms with predicates that are "further away" from \bot in the dependency graph.
+    // If a fact of the form \overline{P}(a) is derived by L_1, then try to avoid deriving P(a).
     int max_dist = std::numeric_limits<int>::min();
     int max_idx;
     int max_dist_nonneg = std::numeric_limits<int>::min();
     int max_idx_nonneg;
-    int idx = 0;
+    int atom_idx = 0;
+
+    // TODO: EQ: how to choose between multiple =(x,y) atoms?
 
     for (const DatalogAtom &atom : effect) {
         int predicate_idx = atom.get_predicate_index();
         int distance_to_bottom = program.get_distances_to_bottom()[predicate_idx];
         if (distance_to_bottom > max_dist) {
             max_dist = distance_to_bottom;
-            max_idx = idx;
+            max_idx = atom_idx;
         }
 
-        Fact f(instantiation, predicate_idx, atom.is_pred_symbol_new());
-        if (!utils::contains(negated_lower_bound_facts, f)) {
+        if (!utils::contains(negated_lower_bound, instantiated_facts[atom_idx])) {
             if (distance_to_bottom > max_dist_nonneg) {
                 max_dist_nonneg = distance_to_bottom;
-                max_idx_nonneg = idx;
+                max_idx_nonneg = atom_idx;
             }
         }
 
-        ++idx;
+        ++atom_idx;
     }
 
     if (max_dist_nonneg != std::numeric_limits<int>::min()) {
-        // to to avoid negated_lower_bound_facts if possible
+        // to avoid negated_lower_bound_facts if possible
         return max_idx_nonneg;
     }
     else {
-        // otherwise, just minimize the distance to \bot
+        // otherwise, only minimize the distance to \bot
         return max_idx;
     }
 }
 
+const Arguments map_args(const Arguments &args, const vector<int> &map) {
+    Arguments mapped_args;
+    for (int pos : map) {
+        mapped_args.push_back(args[pos]);
+    }
+    return mapped_args;
+}
+
+const Arguments select(const Arguments &args, int idx) {
+    return args;
+}
+
+const Arguments select(const vector<Arguments> &mapped_args, int idx) {
+    return mapped_args[idx];
+}
+
+template<typename A>
+void CChase::check_and_add_disjunction(const DisjunctiveExistentialRule &rule, const A &instantiation, CChaseMode mode, std::vector<Fact> &negated_lower_bound) {
+
+    // head contains multiple atoms, instantiation grounds all of them
+
+    if (mode == SPLIT) { // U_2
+        for (int atom_idx = 0; atom_idx < rule.get_effect().size(); ++atom_idx) {
+            check_and_add_atom(rule, atom_idx, select(instantiation, atom_idx), true);
+        }
+    } else { // mode == CHOICE / U_3
+
+        // restricted chase check
+        std::vector<Fact> instantiated_facts;
+        int atom_idx = 0;
+        for (const DatalogAtom &eff: rule.get_effect()) {
+            Fact instantiated_fact(select(instantiation, atom_idx),
+                eff.get_predicate_index(),
+                eff.is_pred_symbol_new());
+            if (reached_atoms.contains(instantiated_fact)) {
+                return;
+            }
+            instantiated_facts.push_back(instantiated_fact);
+            ++atom_idx;
+        }
+
+        // add new fact according to choice function
+        int chosen_atom_idx = choice_function(rule.get_effect(), instantiated_facts, negated_lower_bound);
+        Fact chosen_fact = instantiated_facts[chosen_atom_idx];
+        reached_atoms.insert(chosen_fact);
+        add_fact(rule, chosen_fact);
+    }
+
+}
+
 void CChase::create_rule_matcher() {
+    // TODO: EQ: adapt this for =(x,y) and \neq(x,y) atoms?
+
     // Loop over rule conditions
     for (const auto &rule : program.get_rules()) {
         int cond_idx = 0;
@@ -124,7 +206,12 @@ int aggregation_function(int a, int b) {
     return 0;
 }
 
-bool CChase::chase(std::vector<Fact> &state_facts, CChaseMode mode, bool stop_on_bot) {
+// initialized by facts and negated facts (\overline{}) derived from a previous
+// Datalog materialization to compute a lower bound via shifted Datalog rules
+// (pre-computed positive facts are used to initialize the c-chase)
+// (negated facts are used for the choice_function, assumes that the facts use
+// the non-negated predicate indices)
+bool CChase::chase(std::vector<Fact> &lower_bound, std::vector<Fact> &negated_lower_bound, CChaseMode mode, bool stop_on_bot) {
 
     bool bot_derived = false;
 
@@ -159,7 +246,7 @@ bool CChase::chase(std::vector<Fact> &state_facts, CChaseMode mode, bool stop_on
 
     assert(q.empty());
 
-    for (Fact &f : state_facts) {
+    for (Fact &f : lower_bound) {
         f.set_fact_index();
         atoms_produced++;
         cumulative_atoms_produced++;
@@ -182,6 +269,7 @@ bool CChase::chase(std::vector<Fact> &state_facts, CChaseMode mode, bool stop_on
         // inside the rule loop, where no fact is inserted during a single
         // project/join/product call.
         const Fact &popped_fact = program.get_fact_by_index(top_fact_index);
+        // TODO: EQ: "canonicalize" the fact to work only over representatives for =? -> maybe re-fetching (see below) already deals with this (if we canonicalize facts in-place)?
         // TODO: try to avoid processing facts multiple times -- implement proper seminaive evaluation? (also needed for "Datalog first" strategy)
         int predicate_index = popped_fact.get_predicate_index();
         for (const auto
@@ -195,26 +283,33 @@ bool CChase::chase(std::vector<Fact> &state_facts, CChaseMode mode, bool stop_on
             rule.visit_body([&](auto& conditions) {
                 // Re-fetch current fact: a previous iteration may have grown (and moved) the fact vector.
                 const Fact &current_fact = program.get_fact_by_index(top_fact_index);
+                // TODO: EQ: rewrite all "instantiate" implementations to take care of inequality atoms \neq(x,y)? (=(x,y) should not occur in bodies)
                 conditions.instantiate(rule.get_effect_arguments(), rule.get_variable_position_map(), current_fact, position_in_the_body, aggregation_function,
-                    [&](Arguments args, int cost, Achievers ach) {
+                    [&](Arguments instantiation, int cost, Achievers ach) {
 
-                        if (rule.get_effect().size() == 0) {
+                        int number_of_effects = rule.get_effect().size();
+
+                        if (number_of_effects == 0) {
                             bot_derived = true;
                             // cout << "Derived bottom due to rule ";
                             // program.output_rule(rule);
                         }
                         else { // at least one head atom
-                            if (rule.get_effect().size() == 1) {
-                                add_fact(rule, 0, args);
-                            } 
+                            if (number_of_effects == 1) {
+                                if (!rule.has_uniform_unique_effect_arguments()) {
+                                    instantiation = map_args(instantiation, rule.get_map_orig_args()[0]);
+                                }
+                                check_and_add_atom(rule, 0, instantiation, !rule.has_existential_variables());
+                            }
                             else { // multiple head atoms
-                                if (mode == SPLIT) {
-                                    for (int atom_idx = 0; atom_idx < rule.get_effect().size(); ++atom_idx) {
-                                        add_fact(rule, atom_idx, args);
+                                if (!rule.has_uniform_unique_effect_arguments()) {
+                                    vector<Arguments> mapped_args;
+                                    for (std::vector<int> map : rule.get_map_orig_args()) {
+                                        mapped_args.push_back(map_args(instantiation, map));
                                     }
-                                } else { // mode == CHOICE
-                                    int chosen_atom_idx = choice_function(rule.get_effect(), args);
-                                    add_fact(rule, chosen_atom_idx, args);
+                                    check_and_add_disjunction(rule, mapped_args, mode, negated_lower_bound);
+                                } else {
+                                    check_and_add_disjunction(rule, instantiation, mode, negated_lower_bound);
                                 }
                             }
                         }
@@ -234,9 +329,9 @@ bool CChase::chase(std::vector<Fact> &state_facts, CChaseMode mode, bool stop_on
     return bot_derived;
 }
 
-const std::vector<Fact> CChase::upper_bound_query(std::vector<Fact> &state_facts) {
+const std::vector<Fact> CChase::upper_bound_query(std::vector<Fact> &lower_bound, std::vector<Fact> &negated_lower_bound) {
     // first run U_2, since that needs to be done in any case
-    chase(state_facts, SPLIT, false);
+    chase(lower_bound, negated_lower_bound, SPLIT, false);
     std::vector<Fact> u2_answers;
     for (const Fact &f : program.get_facts()) {
         if (!program.is_auxiliary_fact(f)) {
@@ -245,7 +340,7 @@ const std::vector<Fact> CChase::upper_bound_query(std::vector<Fact> &state_facts
     }
 
     // then run U_3, can terminate early if \bot is derived
-    if (chase(state_facts, CHOICE, true)) {
+    if (chase(lower_bound, negated_lower_bound, CHOICE, true)) {
         // if \bot is derived, return only U_2's answers
         return u2_answers;
     }
@@ -265,8 +360,8 @@ const std::vector<Fact> CChase::upper_bound_query(std::vector<Fact> &state_facts
     }
 }
 
-bool CChase::upper_bound_bottom_query(std::vector<Fact> &state_facts) {
-    return chase(state_facts, SPLIT, true) && chase(state_facts, CHOICE, true);
+bool CChase::upper_bound_bottom_query(std::vector<Fact> &lower_bound, std::vector<Fact> &negated_lower_bound) {
+    return chase(lower_bound, negated_lower_bound, SPLIT, true) && chase(lower_bound, negated_lower_bound, CHOICE, true);
 }
 
 

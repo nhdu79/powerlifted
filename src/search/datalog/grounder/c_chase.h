@@ -15,11 +15,6 @@ class CChase {
 
     DisjunctiveExistentialProgram &program;
 
-    // negated facts derived from a previous call to compute a lower bound via
-    // shifted disjunctive datalog rules (used for choice_function, assumes that
-    // the facts use the non-negated predicate indices).
-    std::vector<Fact> negated_lower_bound_facts;
-
     std::queue<int> q;
 
     // The state facts are the first facts created each grounding, so they
@@ -44,9 +39,14 @@ class CChase {
     unsigned long long cumulative_queue_pushes;
     int total_number_of_facts;
 
-    void add_fact(const DisjunctiveExistentialRule &rule, int head_index, Arguments &instantiation);
+    void add_fact(const DisjunctiveExistentialRule &rule, Fact& fact);
 
-    int choice_function(const std::vector<DatalogAtom> &effect, const Arguments &instantiation);
+    void check_and_add_atom(const DisjunctiveExistentialRule &rule, int head_index, const Arguments &instantiation, bool ground);
+
+    int choice_function(const std::vector<DatalogAtom> &effect, const std::vector<Fact> &instantiated_facts, std::vector<Fact> &negated_lower_bound);
+
+    template<typename A>
+    void check_and_add_disjunction(const DisjunctiveExistentialRule &rule, const A &instantiation, CChaseMode mode, std::vector<Fact> &negated_lower_bound);
 
 protected:
 
@@ -55,9 +55,8 @@ protected:
     void create_rule_matcher();
 
 public:
-    CChase(DisjunctiveExistentialProgram &p, std::vector<Fact> &nlbf) :
-        program(p),
-        negated_lower_bound_facts(std::move(nlbf))
+    CChase(DisjunctiveExistentialProgram &p) :
+        program(p)
     {
         create_rule_matcher();
         queue_pushes = 0;
@@ -69,11 +68,11 @@ public:
 
     ~CChase() = default;
 
-    bool chase(std::vector<Fact> &state_facts, CChaseMode mode, bool stop_on_bot);
+    bool chase(std::vector<Fact> &lower_bound, std::vector<Fact> &negated_lower_bound, CChaseMode mode, bool stop_on_bot);
     
-    const std::vector<Fact> upper_bound_query(std::vector<Fact> &state_facts);
+    const std::vector<Fact> upper_bound_query(std::vector<Fact> &lower_bound, std::vector<Fact> &negated_lower_bound);
 
-    bool upper_bound_bottom_query(std::vector<Fact> &state_facts);
+    bool upper_bound_bottom_query(std::vector<Fact> &lower_bound, std::vector<Fact> &negated_lower_bound);
 
     void print_statistics() {
         std::cout << program.get_number_of_facts() << " final number of facts" << std::endl;

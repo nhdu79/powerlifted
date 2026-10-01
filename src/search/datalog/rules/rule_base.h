@@ -30,7 +30,7 @@ public:
           index(next_index++),
           annotation(std::move(annotation))
     {
-        variable_position.create_map(effect);
+        variable_position.create_map(effect.get_arguments());
         ground_effect = true;
         for (const auto &e : effect.get_arguments()) {
             if (!e.is_object()) {
@@ -45,7 +45,7 @@ public:
 
     void recreate_map_variable_position(const DatalogAtom &effect)
     {
-        variable_position.create_map(effect);
+        variable_position.create_map(effect.get_arguments());
     }
 
     const DatalogAtom &get_effect() const { return effect; }
