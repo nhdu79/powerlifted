@@ -1,9 +1,9 @@
 #! /usr/bin/env python3
 """
-Parse dev/domains/tests (domain.pddl + problem.pddl — the mko-using "drone"
-task written against dev/ontologies/TTL.owl), normalize it the same way
+Parse dev/domains/team (domain.pddl + problem.pddl — the mko-using "team"
+task written against dev/ontologies/team.owl), normalize it the same way
 translate.py does, then run it through ontology.process_ontology and print
-the resulting lowerbound rules on task.ontology_rules — for manual
+the resulting lowerbound rules on task.lowerbound_rules — for manual
 inspection. Not a test — makes no assertions.
 
 process_ontology itself resolves Clipper the same way translate.py's own
@@ -24,9 +24,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _TRANSLATOR_DIR = _REPO_ROOT / "src" / "translator"
 sys.path.insert(0, str(_TRANSLATOR_DIR))
 
-DOMAIN_FILE = _REPO_ROOT / "dev" / "domains" / "tests" / "domain.pddl"
-PROBLEM_FILE = _REPO_ROOT / "dev" / "domains" / "tests" / "problem.pddl"
-ONTOLOGY_FILE = _REPO_ROOT / "dev" / "ontologies" / "TTL.owl"
+DOMAIN_FILE = _REPO_ROOT / "dev" / "domains" / "team" / "domain.pddl"
+PROBLEM_FILE = _REPO_ROOT / "dev" / "domains" / "team" / "problem.pddl"
+ONTOLOGY_FILE = _REPO_ROOT / "dev" / "ontologies" / "team.owl"
 
 # pddl_parser eagerly imports options, whose module-level setup() parses
 # sys.argv for required "domain"/"task" positionals (translate.py's own CLI)
@@ -57,7 +57,7 @@ def main() -> None:
         print(f"skipped — {error}")
         return
 
-    print(f"lowerbound rules on task.ontology_rules: {len(task.ontology_rules)}")
+    print(f"lowerbound rules on task.lowerbound_rules: {len(task.lowerbound_rules)}")
 
 
 if __name__ == "__main__":

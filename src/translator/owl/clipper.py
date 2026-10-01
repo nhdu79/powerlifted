@@ -4,7 +4,6 @@ import os
 import re
 import subprocess
 
-
 TEMPORARY_DATALOG_FILE = "__temp_clipper_datalog{0}.txt"
 TEMPORARY_QUERY_FILE = "__temp_clipper_query{0}.cq"
 
@@ -38,9 +37,7 @@ class Clipper:
     def rewrite_ontology(self):
         df = TEMPORARY_DATALOG_FILE.format(self.num_calls)
         self.num_calls += 1
-        subprocess.call(
-            [self.path, "rewrite", "-d", df, "-o", self.ontology_path]
-        )
+        subprocess.call([self.path, "rewrite", "-d", df, "-o", self.ontology_path])
         return self._read_datalog_file(df)
 
     def rewrite_cq(self, cq):
@@ -50,9 +47,7 @@ class Clipper:
         with open(qf, "w") as f:
             f.write(cq)
             f.write("\n")
-        subprocess.call(
-            [self.path, "rewrite", "-cq", qf, "-d", df, self.ontology_path]
-        )
+        subprocess.call([self.path, "rewrite", "-cq", qf, "-d", df, self.ontology_path])
         if not self.debug_mode:
             os.remove(qf)
         return self._read_datalog_file(df, skip_until="rewritten queries")
@@ -75,7 +70,7 @@ class Clipper:
             if skip_until is not None:
                 for i, line in enumerate(lines):
                     if skip_until in line:
-                        lines = lines[i + 1:]
+                        lines = lines[i + 1 :]
                         break
             for line in lines:
                 comment_pos = line.find("%")

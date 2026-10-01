@@ -36,7 +36,7 @@ from dataclasses import fields, is_dataclass
 from owl import OWL_NOTHING, OWL_THING, AtomicConcept, AtomicRole
 from owl.expressions import parse_name
 from rdflib.namespace import OWL
-from rules.atoms import NEQ_PREDICATE
+from rules.atoms import NEQ_PREDICATE, is_reserved_rule_predicate
 
 _OWL_NS = str(OWL)
 _QUERY_LIKE = re.compile(r"query\d+")
@@ -59,7 +59,8 @@ def _raw_local_name(iri):
 
 def _is_translator_generated(name):
     """Predicates the translator introduces itself (type@<type>, @-prefixed
-    helpers, equality), which never reach Clipper."""
+    helpers, the Table 1 rules' neq@ and head@<id>, equality), which never
+    reach Clipper."""
     return "@" in name or name == "="
 
 
@@ -146,7 +147,13 @@ def check_names(task, ontology_names):
     problems = []
     pddl_raw = defaultdict(set)
     pddl_arity = {}
+    # Checked before the translator-generated ones are skipped below: they
+    # contain "@" too. Only a user's predicate can be one here, as the rules'
+    # own predicates are declared after this check.
+    rule_reserved = []
     for predicate in task.predicates:
+        if is_reserved_rule_predicate(predicate.name):
+            rule_reserved.append(predicate.name)
         if _is_translator_generated(predicate.name):
             continue
         name = parse_name(predicate.name)
@@ -208,11 +215,13 @@ def check_names(task, ontology_names):
                 f"'{raw}' is reserved for a fresh symbol introduced by "
                 f"ontology normalization or shifting"
             )
-        if NEQ_PREDICATE in raws:
-            problems.append(
-                f"'{NEQ_PREDICATE}' is reserved for the distinctness of "
-                f"min-cardinality fillers"
-            )
+    for raw in sorted(rule_reserved):
+        purpose = (
+            "the distinctness of min-cardinality fillers"
+            if raw == NEQ_PREDICATE
+            else "the heads of normalised existential rules"
+        )
+        problems.append(f"'{raw}' is reserved for {purpose}")
     reserved = {OWL_NOTHING.id: "owl:Nothing", OWL_THING.id: "owl:Thing"}
     for name in sorted(set(pddl_raw) | set(owl_raw)):
         spelled = sorted(pddl_raw.get(name, no_names) | owl_raw.get(name, no_names))[0]

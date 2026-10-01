@@ -25,7 +25,7 @@ from owl import OWL_THING, AtomicConcept, AtomicRole, Ontology  # noqa: E402
 from pddl.conditions import Atom  # noqa: E402
 
 from rules.disjunctive_existential_rule import DisjunctiveExistentialRule  # noqa: E402
-from rules.table1.top_population import top_population_rules  # noqa: E402
+from rules.table1.top_population import reads_top, top_population_rules  # noqa: E402
 
 R = AtomicRole("http://ex/R")
 A = AtomicConcept("http://ex/A")
@@ -63,6 +63,16 @@ class TopPopulationRulesTest(unittest.TestCase):
     def test_owl_thing_itself_gets_no_rule(self):
         ontology = Ontology(iri="http://ex", concepts={OWL_THING.id: OWL_THING})
         self.assertEqual(top_population_rules(ontology), [])
+
+
+class ReadsTopTest(unittest.TestCase):
+    def test_only_top_in_a_body_counts(self):
+        top_x = Atom("thing", ("?x",))
+        a_x = Atom("a", ("?x",))
+        self.assertTrue(reads_top([DisjunctiveExistentialRule(effect=(a_x,), body=(top_x,))]))
+        # ⊤ in the effect only is derived, not read.
+        self.assertFalse(reads_top([DisjunctiveExistentialRule(effect=(top_x,), body=(a_x,))]))
+        self.assertFalse(reads_top([]))
 
 
 if __name__ == "__main__":

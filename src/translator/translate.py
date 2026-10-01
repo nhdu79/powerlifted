@@ -161,7 +161,11 @@ def main():
         print_action_schemas(output, task, object_index, predicate_index, type_index)
 
     with timers.timing("Printing rules"):
-        print_rules(output, task, object_index, predicate_index)
+        for title, rules in (
+            ("LOWERBOUND-RULES", getattr(task, "lowerbound_rules", [])),
+            ("UPPERBOUND-RULES", getattr(task, "upperbound_rules", [])),
+        ):
+            print_rules(output, title, rules, object_index, predicate_index)
 
     print("Total translation time:", timer.get_cpu_time())
 
@@ -200,6 +204,8 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
     #    - list of pairs in the format (O, i), where O is 'c' if it is a
     # constant and 'p' if it is a parameter. In the case it is a constant, 'i'
     # is its object index; otherwise it is the parameter index
+    #    - mko flag: 1 if the atom stands for an mko, i.e. is evaluated
+    # w.r.t. the lowerbound rules, 0 if it is evaluated on the state
     # - Next, we output similar information for the effects
     #    - predicate name
     #    - predicate index
@@ -265,6 +271,7 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
                 int(cond.negated),
                 len(cond.args),
                 " ".join(i for i in args_list),
+                int(cond.mko),
                 file=output,
             )
         # Delete effects first to guarantee add-after-delete semantics
@@ -293,10 +300,11 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
             )
 
 
-def print_rules(output, task, object_index, predicate_index):
-    # Rules (task.ontology_rules) mirror datalog::DisjunctiveExistentialRule.
-    # Always printed; "RULES 0" without an ontology.
-    # - Canary and number of rules
+def print_rules(output, title, rules, object_index, predicate_index):
+    # Rules mirror datalog::DisjunctiveExistentialRule. Two sections, both
+    # always printed ("<title> 0" without an ontology): LOWERBOUND-RULES
+    # (task.lowerbound_rules) and UPPERBOUND-RULES (task.upperbound_rules).
+    # - Canary (title) and number of rules
     # - Per rule, a line with
     #    - number of effect atoms, i.e. the rule's head (0: bottom)
     #    - number of body atoms
@@ -312,8 +320,7 @@ def print_rules(output, task, object_index, predicate_index):
     # Effect-only variables are existential. Several effect atoms: a
     # disjunction without existential variables, a conjunction under the
     # existential otherwise (see rules.disjunctive_existential_rule).
-    rules = getattr(task, "ontology_rules", [])
-    print("RULES %d" % len(rules), file=output)
+    print("%s %d" % (title, len(rules)), file=output)
     for rule in rules:
         variable_index = {}
         for atom in rule.body + rule.effect:
@@ -359,21 +366,28 @@ def print_goal(output, task, atom_index, object_index, predicate_index):
     for index, atom in enumerate(goal_list):
         if options.ground_state_representation:
             # If we use ground state representation, we simply output the
-            # atom name, followed by its atom index and whether it is negated
-            # or not in the goal.
-            print(atom, atom_index[str(atom)], int(atom.negated), file=output)
+            # atom name, followed by its atom index, whether it is negated
+            # or not in the goal, and its mko flag.
+            print(
+                atom,
+                atom_index[str(atom)],
+                int(atom.negated),
+                int(atom.mko),
+                file=output,
+            )
         else:
             # If we use sparse state representation, we output the atom name,
             # its predicate index, a boolean flag indicating whether it is
             # negated in the goal condition or not, the number of arguments
-            # in the predicate, and the indices of the objects instantiating
-            # the arguments.
+            # in the predicate, the indices of the objects instantiating
+            # the arguments, and its mko flag (as for action preconditions).
             print(
                 atom,
                 predicate_index[atom.predicate],
                 int(atom.negated),
                 len(atom.args),
                 " ".join(str(object_index[o]) for o in atom.args),
+                int(atom.mko),
                 file=output,
             )
 
@@ -515,13 +529,14 @@ def remove_static_predicates_from_goal(task, static_pred):
         or isinstance(task.goal, pddl.Atom)
         or isinstance(task.goal, pddl.NegatedAtom)
     ):
-        if task.goal.predicate not in static_pred:
+        if task.goal.mko or task.goal.predicate not in static_pred:
             return
         else:
             removed += 1
     for g in task.goal.parts:
         if (
             isinstance(g, pddl.MinimalKnowledgeOperator)
+            or g.mko
             or g.predicate not in static_pred
         ):
             parts.append(g)

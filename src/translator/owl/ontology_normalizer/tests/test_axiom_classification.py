@@ -52,7 +52,7 @@ from owl.ontology_normalizer import normalize_ontology  # noqa: E402
 from owl.parser import UnsupportedConstructError, parse_owl  # noqa: E402
 
 ASSEMBLY_OWL = _REPO_ROOT / "dev" / "ontologies" / "assembly.owl"
-TTL_OWL = _REPO_ROOT / "dev" / "ontologies" / "TTL.owl"
+DRONES_OWL = _REPO_ROOT / "dev" / "ontologies" / "drones.owl"
 
 
 class ClassifyDisjointRoleTest(unittest.TestCase):
@@ -127,7 +127,7 @@ class EnsureFullySupportedTest(unittest.TestCase):
     unsupported ontology — normalize_ontology itself never does."""
 
     def test_fully_supported_ontology_does_not_raise(self):
-        for path in (ASSEMBLY_OWL, TTL_OWL):
+        for path in (ASSEMBLY_OWL, DRONES_OWL):
             ontology = parse_owl(str(path))
             normalize_ontology(ontology)
             ensure_fully_supported(ontology)  # must not raise

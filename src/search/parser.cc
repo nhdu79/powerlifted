@@ -73,7 +73,7 @@ bool parse(Task &task, const ifstream &in)
         return false;
     }
     cout << "Total number of fluent atoms in the goal state: " << goal_size << endl;
-    parse_goal(task, goal_size);
+    int number_mko_atoms = parse_goal(task, goal_size);
 
 
     int number_action_schemas;
@@ -82,13 +82,22 @@ bool parse(Task &task, const ifstream &in)
         return false;
     }
     cout << "Total number of action schemas: " << number_action_schemas << endl;
-    parse_action_schemas(task, number_action_schemas);
+    number_mko_atoms += parse_action_schemas(task, number_action_schemas);
+
+    if (number_mko_atoms > 0) {
+        cerr << "Warning: the task has " << number_mko_atoms
+             << " mko atoms, which the search does not evaluate w.r.t. the "
+                "lowerbound rules yet: non-nullary ones are evaluated on the "
+                "state, nullary ones are ignored."
+             << endl;
+    }
 
     return true;
 }
 
-void parse_action_schemas(Task &task, int number_action_schemas)
+int parse_action_schemas(Task &task, int number_action_schemas)
 {
+    int number_mko_atoms = 0;
     vector<ActionSchema> actions;
     for (int i = 0; i < number_action_schemas; ++i) {
         string name;
@@ -99,6 +108,8 @@ void parse_action_schemas(Task &task, int number_action_schemas)
         vector<Atom> preconditions, static_preconditions, effects;
         vector<bool> positive_nul_precond(task.predicates.size(), false),
             negative_nul_precond(task.predicates.size(), false),
+            positive_nul_mko_precond(task.predicates.size(), false),
+            negative_nul_mko_precond(task.predicates.size(), false),
             positive_nul_eff(task.predicates.size(), false),
             negative_nul_eff(task.predicates.size(), false);
         for (int j = 0; j < args; ++j) {
@@ -123,7 +134,12 @@ void parse_action_schemas(Task &task, int number_action_schemas)
             cin >> precond_name >> index >> negated >> arguments_size;
             if (arguments_size == 0) {
                 assert(task.nullary_predicates.find(index) != task.nullary_predicates.end());
-                if (!negated)
+                bool mko;
+                cin >> mko;
+                number_mko_atoms += mko;
+                if (mko)
+                    (negated ? negative_nul_mko_precond : positive_nul_mko_precond)[index] = true;
+                else if (!negated)
                     positive_nul_precond[index] = true;
                 else
                     negative_nul_precond[index] = true;
@@ -131,7 +147,11 @@ void parse_action_schemas(Task &task, int number_action_schemas)
             else if (utils::iequals(precond_name, "=")) {
                 int id1, id2;
                 char c, d;
-                cin >> c >> id1 >> d >> id2;
+                bool mko;
+                cin >> c >> id1 >> d >> id2 >> mko;
+                // (In)equality is never an mko: the translator reads mko(= ?x ?y)
+                // as (= ?x ?y), under the unique name assumption.
+                assert(!mko);
 
                 vector<Argument> arguments;
                 arguments.emplace_back(id1, c == 'c', false);
@@ -159,8 +179,11 @@ void parse_action_schemas(Task &task, int number_action_schemas)
                         utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
                     }
                 }
+                bool mko;
+                cin >> mko;
+                number_mko_atoms += mko;
                 preconditions.emplace_back(
-                    std::move(arguments), std::move(precond_name), index, negated);
+                    std::move(arguments), std::move(precond_name), index, negated, mko);
             }
         }
         for (int j = 0; j < eff_size; ++j) {
@@ -211,35 +234,51 @@ void parse_action_schemas(Task &task, int number_action_schemas)
                        static_preconditions,
                        positive_nul_precond,
                        negative_nul_precond,
+                       positive_nul_mko_precond,
+                       negative_nul_mko_precond,
                        positive_nul_eff,
                        negative_nul_eff);
         actions.push_back(a);
     }
     task.initialize_action_schemas(actions);
+    return number_mko_atoms;
 }
 
-void parse_goal(Task &task, int goal_size)
+int parse_goal(Task &task, int goal_size)
 {
+    int number_mko_atoms = 0;
     vector<AtomicGoal> goals;
     unordered_set<int> positive_nullary_goals, negative_nullary_goals;
+    unordered_set<int> positive_nullary_mko_goals, negative_nullary_mko_goals;
     for (int i = 0; i < goal_size; ++i) {
         string name;
         int predicate_index;
         bool negated;
         int number_args;
         cin >> name >> predicate_index >> negated >> number_args;
+        vector<int> args;
+        copy_next_n_values(number_args, args);
+        bool mko;
+        cin >> mko;
+        number_mko_atoms += mko;
         if (number_args == 0) {
-            if (negated)
+            if (mko)
+                (negated ? negative_nullary_mko_goals : positive_nullary_mko_goals)
+                    .insert(predicate_index);
+            else if (negated)
                 negative_nullary_goals.insert(predicate_index);
             else
                 positive_nullary_goals.insert(predicate_index);
             continue;
         }
-        vector<int> args;
-        copy_next_n_values(number_args, args);
-        goals.emplace_back(predicate_index, args, negated);
+        goals.emplace_back(predicate_index, args, negated, mko);
     }
-    task.create_goal_condition(goals, positive_nullary_goals, negative_nullary_goals);
+    task.create_goal_condition(goals,
+                               positive_nullary_goals,
+                               negative_nullary_goals,
+                               positive_nullary_mko_goals,
+                               negative_nullary_mko_goals);
+    return number_mko_atoms;
 }
 
 void parse_initial_state(Task &task, int initial_state_size)

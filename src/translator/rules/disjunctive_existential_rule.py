@@ -15,8 +15,9 @@ A rule is body -> effect, where:
     disjunct of O11).
   - effect is several atoms where some argument doesn't occur in body: an
     existential rule — the atoms are read as AND'd together under one
-    shared existential quantifier (Table 1's O10, and the >=m extension
-    used for O14).
+    shared existential quantifier. Table 1 rules never have this shape
+    (not normalised; O10/O14 are normalised into single-atom existential
+    heads, see table1_rules.py), but Clipper's may.
   - effect is empty: the special nullary head bottom (a denial/constraint
     rule; Table 1's O1, O9).
 
@@ -25,10 +26,12 @@ side, it falls out of whether any effect atom's argument is a variable
 absent from body (see disjunctive_existential_rule.h's constructor,
 which computes has_existential_variables() this same way). This is why
 the class is named after both cases at once: one DisjunctiveExistentialRule
-object can be either, or (for O10-shaped rules) a conjunction under an
-existential — never a mix of OR and existential quantification in the
-same rule, matching the normalised rule forms (2)-(4) in Zhou et al.
-2015, page 5.
+object can be either, or a conjunction under an existential — never a mix
+of OR and existential quantification in the same rule. Only the empty
+effect, a single atom, and a non-existential disjunction are the
+normalised rule forms (2)-(4) in Zhou et al. 2015, page 5; the C++ class
+also assumes all effect atoms share their arguments (see
+disjunctive_existential_rule.h).
 """
 
 from __future__ import annotations

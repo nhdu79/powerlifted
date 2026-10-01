@@ -69,15 +69,15 @@ from owl.ontology_normalizer import normalize_ontology  # noqa: E402
 from owl.parser import parse_owl  # noqa: E402
 
 ASSEMBLY_OWL = _REPO_ROOT / "dev" / "ontologies" / "assembly.owl"
-TTL_OWL = _REPO_ROOT / "dev" / "ontologies" / "TTL.owl"
+DRONES_OWL = _REPO_ROOT / "dev" / "ontologies" / "drones.owl"
 
 
 class NormalizeIntersectionSubTest(unittest.TestCase):
-    """Direct tests of _normalize_intersection_sub, against TTL.owl's
+    """Direct tests of _normalize_intersection_sub, against drones.owl's
     3 general axioms (Drone conjoined with one or two existentials)."""
 
     def setUp(self):
-        self.ontology = parse_owl(str(TTL_OWL))
+        self.ontology = parse_owl(str(DRONES_OWL))
 
     def test_complex_conjuncts_get_fresh_defining_axioms(self):
         axiom_count_before = len(self.ontology.axioms)
