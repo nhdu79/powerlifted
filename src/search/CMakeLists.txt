@@ -80,6 +80,7 @@ set(SUCCESSOR_GENERATOR_SOURCES
         successor_generators/clique_successor_generator_apply.cc
         successor_generators/full_reducer_successor_generator.cc
         successor_generators/generic_join_successor.cc
+        successor_generators/generic_negation_join_successor_generator.cc
         successor_generators/ordered_join_successor.cc
         successor_generators/random_successor.cc
         successor_generators/successor_generator_factory.cc
