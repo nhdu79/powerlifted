@@ -1,11 +1,31 @@
 #include "task.h"
 
+#include "datalog/disjunctive_existential_program.h"
+
 #include <cassert>
 #include <iostream>
 #include <utility>
 #include <vector>
 
 using namespace std;
+
+Task::Task(const string &domain_name, const string &task_name)
+    : domain_name(domain_name), task_name(task_name)
+{
+    // Create class only with task and domain names
+}
+
+Task::~Task() = default;
+
+void Task::set_lowerbound_program(unique_ptr<datalog::DisjunctiveExistentialProgram> program)
+{
+    lowerbound_program = std::move(program);
+}
+
+void Task::set_upperbound_program(unique_ptr<datalog::DisjunctiveExistentialProgram> program)
+{
+    upperbound_program = std::move(program);
+}
 
 void Task::add_predicate(
     string &name, int index, int arity, bool static_predicate, vector<int> &types)

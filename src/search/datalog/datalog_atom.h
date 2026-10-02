@@ -22,14 +22,19 @@ class DatalogAtom {
     int predicate_index;
     int index;
     bool new_pred_symbol; // If atom has a predicate symbol that is not an atom in the task
+    // Only set for the ontology rules read from the translator (e.g. the
+    // inequality \neq(x,y) in a lowerbound denial); not evaluated yet.
+    bool negated = false;
     static int next_index;
 
 public:
-    DatalogAtom(Arguments arguments, int predicate_index, bool new_pred_symbol) :
+    DatalogAtom(Arguments arguments, int predicate_index, bool new_pred_symbol,
+                bool negated = false) :
         arguments(Arguments(std::move(arguments))),
         predicate_index(predicate_index),
         index(next_index++),
-        new_pred_symbol(new_pred_symbol) {}
+        new_pred_symbol(new_pred_symbol),
+        negated(negated) {}
 
     DatalogAtom(const Atom &atom);
 
@@ -58,6 +63,10 @@ public:
         return new_pred_symbol;
     }
 
+    bool is_negated() const {
+        return negated;
+    }
+
     void print_atom(const std::vector<Object> &obj,
                           const std::unordered_map<int, std::string> &map_index_to_atom) const {
         std::cout << map_index_to_atom.at(predicate_index) << '(';
@@ -83,6 +92,7 @@ public:
 
     friend bool operator==(const DatalogAtom &lhs, const DatalogAtom &rhs) {
         if (lhs.predicate_index != rhs.predicate_index) return false;
+        if (lhs.negated != rhs.negated) return false;
         //if (lhs.index != rhs.predicate_index) return false;
         return !(lhs.arguments!=rhs.arguments);
     }

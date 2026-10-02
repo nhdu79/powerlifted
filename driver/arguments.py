@@ -104,6 +104,9 @@ def parse_options():
                         help="use full-state novelty checking instead of the default lazy effects-only check")
     parser.add_argument("--novelty-early-stop", action="store_true",
                         help="flag if the novelty evaluation of a state should stop as soon as the w-value is defined")
+    parser.add_argument("--use-konclude", action="store_true",
+                        help="flag if the search should use the embedded Konclude reasoner (not supported yet; "
+                             "with --build, also links it)")
     parser.add_argument("--unit-cost", action="store_true",
                            help="flag if the actions should be treated as unit-cost actions")
     parser.add_argument("--keep-translator-file", action="store_true",

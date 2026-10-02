@@ -1,4 +1,6 @@
+#ifdef POWERLIFTED_USE_KONCLUDE
 #include "konclude_reasoner.h"
+#endif
 #include "options.h"
 #include "parser.h"
 #include "plan_manager.h"
@@ -23,17 +25,24 @@ int main(int argc, char *argv[])
 {
     cout << "Initializing planner" << endl;
 
+    Options opt(argc, argv);
+
     // TODO(konclude): trivial wiring smoke test -- confirms the embedded
     // Konclude reasoner links and its create/destroy round-trip doesn't
     // crash or hang at startup. Replace with real ontology wiring once the
     // embedded API is no longer stubbed (see EMBEDDED_LINKING_POWERLIFTED.md).
-    {
+    // Off unless --use-konclude is given, until Konclude is supported; make
+    // it the default then. Needs a build with Konclude (build.py --konclude).
+    if (opt.use_konclude()) {
+#ifdef POWERLIFTED_USE_KONCLUDE
         KoncludeReasoner konclude_smoke_test;
         cout << "Konclude reasoner smoke test: "
              << (konclude_smoke_test.ok() ? "OK" : "FAILED") << endl;
+#else
+        cerr << "--use-konclude needs a build with Konclude (build.py --konclude)." << endl;
+        exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+#endif
     }
-
-    Options opt(argc, argv);
 
     ifstream task_file(opt.get_filename());
     if (!task_file) {

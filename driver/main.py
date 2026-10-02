@@ -88,6 +88,8 @@ def set_extra_options(options):
         CPP_EXTRA_OPTIONS.append("--full-novelty-check")
     if options.novelty_early_stop:
         CPP_EXTRA_OPTIONS += ["--novelty-early-stop", str(1)]
+    if options.use_konclude:
+        CPP_EXTRA_OPTIONS.append("--use-konclude")
 
     # Checks if unit-cost flag is true
     if options.unit_cost:
@@ -105,7 +107,7 @@ def main():
     )
 
     if options.build:
-        build(options.debug, options.cxx_compiler)
+        build(options.debug, options.cxx_compiler, options.use_konclude)
 
     # Create build path
     if not os.path.exists(build_dir):

@@ -2,9 +2,14 @@
 #define SEARCH_PARSER_H
 
 #include <fstream>
+#include <memory>
+#include <string>
 #include <vector>
 
 class Task;
+namespace datalog {
+class DisjunctiveExistentialProgram;
+}
 
 bool parse(Task &task, const std::ifstream &in);
 void output_error(std::string &msg);
@@ -23,5 +28,9 @@ void parse_initial_state(Task &task, int initial_state_size);
 // Both return the number of mko atoms they read.
 int parse_goal(Task &task, int goal_size);
 int parse_action_schemas(Task &task, int number_action_schemas);
+// Reads number_rules rules (after the section's canary) into a program over
+// the task's predicates and objects.
+std::unique_ptr<datalog::DisjunctiveExistentialProgram>
+parse_rules(Task &task, const std::string &section, int number_rules);
 
 #endif  // SEARCH_PARSER_H
