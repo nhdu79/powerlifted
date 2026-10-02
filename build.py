@@ -22,6 +22,12 @@ def parse_options():
     parser.add_argument(
         "--cxx-compiler", default="default", help="Path to CXX compiler used by CMake."
     )
+    parser.add_argument(
+        "--konclude",
+        action="store_true",
+        help="Link the embedded Konclude reasoner (needs a Konclude checkout, "
+        "see EMBEDDED_LINKING_POWERLIFTED.md).",
+    )
     return parser.parse_args()
 
 
@@ -37,7 +43,7 @@ def create_dir(path):
         os.makedirs(path)
 
 
-def build(debug_flag, compiler):
+def build(debug_flag, compiler, konclude=False):
     BUILD_DIR = get_build_dir(debug_flag)
     BUILD_SEARCH_DIR = os.path.join(BUILD_DIR, "search")
     if debug_flag:
@@ -48,9 +54,10 @@ def build(debug_flag, compiler):
     create_dir(BUILD_SEARCH_DIR)
     copytree(TRANSLATOR_DIR, BUILD_DIR + "/translator", dirs_exist_ok=True)
 
-    extra_options = []
+    # Always passed, so a build without --konclude drops a cached ON.
+    extra_options = ["-DUSE_KONCLUDE=" + ("ON" if konclude else "OFF")]
     if compiler != "default":
-        extra_options = ["-DCMAKE_CXX_COMPILER=" + compiler]
+        extra_options.append("-DCMAKE_CXX_COMPILER=" + compiler)
 
     subprocess.check_call(
         ["cmake", SEARCH_DIR, "-DCMAKE_BUILD_TYPE=" + BUILD_TYPE] + extra_options,
@@ -61,4 +68,4 @@ def build(debug_flag, compiler):
 
 if __name__ == "__main__":
     options = parse_options()
-    build(options.debug, options.cxx_compiler)
+    build(options.debug, options.cxx_compiler, options.konclude)
