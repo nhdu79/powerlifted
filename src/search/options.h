@@ -17,6 +17,7 @@ class Options {
     std::string plan_file;
     bool full_novelty_check;
     bool novelty_early_stop;
+    bool konclude;
     unsigned seed;
 
     static void print_help()
@@ -32,7 +33,9 @@ class Options {
                   << "  --full-novelty-check[=BOOL] Use full-state novelty checking "
                      "(default: false)\n"
                   << "  --novelty-early-stop[=BOOL] Stop evaluating novelty early "
-                     "(default: false)\n";
+                     "(default: false)\n"
+                  << "  --use-konclude[=BOOL] Use the embedded Konclude reasoner "
+                     "(default: false; not supported yet)\n";
     }
 
     static bool is_option_name(const std::string &arg)
@@ -134,6 +137,7 @@ public:
           plan_file("FilePathUndefined"),
           full_novelty_check(false),
           novelty_early_stop(false),
+          konclude(false),
           seed(1)
     {
         std::vector<std::string> args(argv + 1, argv + argc);
@@ -175,6 +179,10 @@ public:
                          has_inline_value(arg, "--novelty-early-stop")) {
                     novelty_early_stop = take_bool_value(args, i, "--novelty-early-stop");
                 }
+                else if (is_named_option(arg, "--use-konclude") ||
+                         has_inline_value(arg, "--use-konclude")) {
+                    konclude = take_bool_value(args, i, "--use-konclude");
+                }
                 else if (is_option_name(arg)) {
                     throw std::runtime_error("Unknown option '" + arg + "'.");
                 }
@@ -205,6 +213,8 @@ public:
     bool use_full_novelty_check() const { return full_novelty_check; }
 
     bool get_novelty_early_stop() const { return novelty_early_stop; }
+
+    bool use_konclude() const { return konclude; }
 
     unsigned get_seed() const { return seed; }
 };

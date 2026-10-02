@@ -2,15 +2,27 @@ cmake_minimum_required(VERSION 3.14)
 project(search LANGUAGES CXX)
 
 
-# --- Konclude embedded reasoner ---
-set(KONCLUDE_REPO_ROOT "/home/zinzin2312/repos/Konclude" CACHE PATH
-    "Path to a Konclude checkout built with KoncludeEmbedded.pro (see docs/EMBEDDED_LINKING_POWERLIFTED.md in that repo)")
+# --- Konclude embedded reasoner (optional) ---
+# Off by default until Konclude is supported (see TODO.md); build.py --konclude
+# turns it on.
+option(USE_KONCLUDE "Link the embedded Konclude reasoner" OFF)
 
-add_library(Konclude SHARED IMPORTED)
-set_target_properties(Konclude PROPERTIES
-    IMPORTED_LOCATION "${KONCLUDE_REPO_ROOT}/ReleaseEmbedded/libKonclude.so.1.0.0"
-    INTERFACE_INCLUDE_DIRECTORIES "${KONCLUDE_REPO_ROOT}/Source/Control/Interface/Embedded"
-)
+if (USE_KONCLUDE)
+    set(KONCLUDE_REPO_ROOT "/home/zinzin2312/repos/Konclude" CACHE PATH
+        "Path to a Konclude checkout built with KoncludeEmbedded.pro (see docs/EMBEDDED_LINKING_POWERLIFTED.md in that repo)")
+    set(KONCLUDE_LIBRARY "${KONCLUDE_REPO_ROOT}/ReleaseEmbedded/libKonclude.so.1.0.0")
+    if (NOT EXISTS "${KONCLUDE_LIBRARY}")
+        message(FATAL_ERROR "USE_KONCLUDE is ON but ${KONCLUDE_LIBRARY} doesn't exist "
+                            "(set -DKONCLUDE_REPO_ROOT=..., or build without Konclude)")
+    endif()
+    message(STATUS "Linking Konclude: ${KONCLUDE_LIBRARY}")
+
+    add_library(Konclude SHARED IMPORTED)
+    set_target_properties(Konclude PROPERTIES
+        IMPORTED_LOCATION "${KONCLUDE_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${KONCLUDE_REPO_ROOT}/Source/Control/Interface/Embedded"
+    )
+endif()
 
 # --- ccache support ---
 
@@ -154,11 +166,14 @@ endif()
 target_link_libraries(search PRIVATE project_options)
 target_link_libraries(datalog_test PRIVATE project_options)
 target_link_libraries(c_chase_test PRIVATE project_options)
-target_link_libraries(search PRIVATE project_options Konclude)
-set_target_properties(search PROPERTIES
-    BUILD_RPATH "${KONCLUDE_REPO_ROOT}/ReleaseEmbedded"
-    INSTALL_RPATH "${KONCLUDE_REPO_ROOT}/ReleaseEmbedded"
-)
+if (USE_KONCLUDE)
+    target_link_libraries(search PRIVATE Konclude)
+    target_compile_definitions(search PRIVATE POWERLIFTED_USE_KONCLUDE)
+    set_target_properties(search PROPERTIES
+        BUILD_RPATH "${KONCLUDE_REPO_ROOT}/ReleaseEmbedded"
+        INSTALL_RPATH "${KONCLUDE_REPO_ROOT}/ReleaseEmbedded"
+    )
+endif()
 
 
 # --- Build-type specific flags ---

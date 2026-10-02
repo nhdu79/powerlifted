@@ -7,11 +7,16 @@
 #include "predicate.h"
 #include "states/state.h"
 
+#include <cassert>
+#include <memory>
 #include <ostream>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+namespace datalog {
+class DisjunctiveExistentialProgram;
+}
 
 /**
  * @brief Represents the task, with all its objects, goals, action schemas, etc.
@@ -28,6 +33,11 @@ class Task {
     std::vector<ActionSchema> action_schemas;
     GoalCondition goal;
     bool object_creation = false;
+    // The ontology's rules, read by the parser (both empty without an
+    // ontology): the lowerbound (Clipper's rewriting) and the upperbound
+    // (Table 1 rules, equality axioms and UNA rules).
+    std::unique_ptr<datalog::DisjunctiveExistentialProgram> lowerbound_program;
+    std::unique_ptr<datalog::DisjunctiveExistentialProgram> upperbound_program;
 
 public:
     std::vector<Predicate> predicates;
@@ -37,10 +47,11 @@ public:
     std::unordered_set<int> nullary_predicates;
     StaticInformation static_info;
 
-    Task(const std::string &domain_name, const std::string &task_name)
-        : domain_name(domain_name), task_name(task_name) {
-        // Create class only with task and domain names
-    }
+    // Both out of line: datalog::DisjunctiveExistentialProgram is incomplete
+    // here.
+    Task(const std::string &domain_name, const std::string &task_name);
+
+    ~Task();
 
     const std::string &get_domain_name() const { return domain_name; }
 
@@ -86,6 +97,20 @@ public:
 
     bool has_object_creation() {
         return object_creation;
+    }
+
+    void set_lowerbound_program(std::unique_ptr<datalog::DisjunctiveExistentialProgram> program);
+
+    void set_upperbound_program(std::unique_ptr<datalog::DisjunctiveExistentialProgram> program);
+
+    datalog::DisjunctiveExistentialProgram &get_lowerbound_program() const {
+        assert(lowerbound_program);
+        return *lowerbound_program;
+    }
+
+    datalog::DisjunctiveExistentialProgram &get_upperbound_program() const {
+        assert(upperbound_program);
+        return *upperbound_program;
     }
 
     bool is_goal(const DBState &state) const;

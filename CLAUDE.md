@@ -25,10 +25,13 @@ a Konclude-based OWL/description-logic reasoner into the planner via an
 embedded shared library. See `EMBEDDED_LINKING_POWERLIFTED.md` for the
 step-by-step linking guide (this is developer documentation for the current
 in-progress work, not general project docs) and `src/search/konclude_reasoner.h`
-for the RAII wrapper around the embedded C API. `src/search/CMakeLists.txt`
-currently hardcodes `KONCLUDE_REPO_ROOT` to a sibling checkout path
-(`../Konclude`) — override with `-DKONCLUDE_REPO_ROOT=...` if building on a
-machine with a different layout. `src/translator/ontology.py` is the Python
+for the RAII wrapper around the embedded C API. Konclude is optional and off
+by default: `python build.py --konclude` (CMake `USE_KONCLUDE`, defining
+`POWERLIFTED_USE_KONCLUDE`) links it, and the search only uses it with
+`--use-konclude` (see `TODO.md`). `src/search/CMakeLists.txt` then
+hardcodes `KONCLUDE_REPO_ROOT` to a sibling checkout path (`../Konclude`) —
+override with `-DKONCLUDE_REPO_ROOT=...` if building on a machine with a
+different layout. `src/translator/ontology.py` is the Python
 entry point for ontology-related processing during translation.
 
 ## Build
@@ -37,6 +40,7 @@ entry point for ontology-related processing during translation.
 python build.py            # release build -> builds/release/search/search
 python build.py -d         # debug build   -> builds/debug/search/search
 python build.py --cxx-compiler <path>   # use a specific compiler
+python build.py --konclude # also link the embedded Konclude reasoner (off by default)
 ```
 
 `build.py` creates `builds/<debug|release>/search`, copies `src/translator`

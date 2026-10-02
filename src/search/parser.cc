@@ -3,6 +3,8 @@
 #include "goal_condition.h"
 #include "task.h"
 
+#include "datalog/disjunctive_existential_program.h"
+
 #include "utils/system.h"
 #include "utils/string_utils.h"
 
@@ -83,6 +85,22 @@ bool parse(Task &task, const ifstream &in)
     }
     cout << "Total number of action schemas: " << number_action_schemas << endl;
     number_mko_atoms += parse_action_schemas(task, number_action_schemas);
+
+    int number_lowerbound_rules;
+    cin >> canary >> number_lowerbound_rules;
+    if (not is_next_section_correct(canary, "LOWERBOUND-RULES")) {
+        return false;
+    }
+    cout << "Total number of lowerbound rules: " << number_lowerbound_rules << endl;
+    task.set_lowerbound_program(parse_rules(task, canary, number_lowerbound_rules));
+
+    int number_upperbound_rules;
+    cin >> canary >> number_upperbound_rules;
+    if (not is_next_section_correct(canary, "UPPERBOUND-RULES")) {
+        return false;
+    }
+    cout << "Total number of upperbound rules: " << number_upperbound_rules << endl;
+    task.set_upperbound_program(parse_rules(task, canary, number_upperbound_rules));
 
     if (number_mko_atoms > 0) {
         cerr << "Warning: the task has " << number_mko_atoms
@@ -242,6 +260,67 @@ int parse_action_schemas(Task &task, int number_action_schemas)
     }
     task.initialize_action_schemas(actions);
     return number_mko_atoms;
+}
+
+/*
+ * Per rule (see print_rules in the translator's translate.py): a line with
+ * the number of effect atoms (0: bottom), body atoms and variables, then
+ * one line per effect atom and per body atom:
+ *   name predicate_index negated number_args (c|p index)*
+ * 'c' is an object index, 'p' a variable index, numbered per rule.
+ */
+static datalog::DatalogAtom parse_rule_atom(const string &section)
+{
+    string name;
+    int predicate_index;
+    bool negated;
+    int number_args;
+    cin >> name >> predicate_index >> negated >> number_args;
+    vector<datalog::Term> terms;
+    for (int k = 0; k < number_args; ++k) {
+        char c;
+        int index;
+        cin >> c >> index;
+        if (c == 'c') {
+            terms.emplace_back(index, datalog::OBJECT);
+        }
+        else if (c == 'p') {
+            terms.emplace_back(index, datalog::VARIABLE);
+        }
+        else {
+            cerr << "Error while reading " << section << ": argument of " << name
+                 << " is neither constant nor variable." << endl;
+            utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+        }
+    }
+    return datalog::DatalogAtom(
+        datalog::Arguments(std::move(terms)), predicate_index, false, negated);
+}
+
+unique_ptr<datalog::DisjunctiveExistentialProgram>
+parse_rules(Task &task, const string &section, int number_rules)
+{
+    vector<unique_ptr<datalog::DisjunctiveExistentialRule>> rules;
+    for (int i = 0; i < number_rules; ++i) {
+        int effect_size, body_size, number_variables;
+        cin >> effect_size >> body_size >> number_variables;
+        vector<datalog::DatalogAtom> effect, body;
+        for (int j = 0; j < effect_size; ++j) {
+            effect.push_back(parse_rule_atom(section));
+        }
+        for (int j = 0; j < body_size; ++j) {
+            body.push_back(parse_rule_atom(section));
+        }
+        rules.push_back(make_unique<datalog::DisjunctiveExistentialRule>(
+            std::move(effect), datalog::RuleBody(datalog::GenericBody(std::move(body)))));
+    }
+
+    vector<datalog::Object> objects;
+    for (const Object &o : task.objects) {
+        objects.emplace_back(o.get_name());
+    }
+    return make_unique<datalog::DisjunctiveExistentialProgram>(
+        task.predicates, objects, std::move(rules));
 }
 
 int parse_goal(Task &task, int goal_size)
