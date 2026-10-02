@@ -133,7 +133,10 @@ class TranslateO5Test(unittest.TestCase):
 
         (rule,) = translate_axiom(axiom, O5)
 
-        self.assertEqual(rule.body, (Atom("r", ("?x", "?x")),))
+        # No variable twice in an atom: R(x,x) becomes R(x,y) ∧ x ≈ y.
+        self.assertEqual(
+            rule.body, (Atom("r", ("?x", "?y")), Atom("=", ("?x", "?y")))
+        )
         self.assertEqual(rule.effect, (Atom("a", ("?x",)),))
 
 
