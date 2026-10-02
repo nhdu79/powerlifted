@@ -7,6 +7,7 @@
 #include "../database/table.h"
 #include "../states/state.h"
 #include "../task.h"
+#include "../utils/collections.h"
 
 #include <algorithm>
 #include <cassert>
@@ -43,11 +44,18 @@ Table GenericNegationJoinSuccessorGenerator::instantiate(const ActionSchema &act
     assert(tables.size() == actiondata.relevant_precondition_atoms.size());
 
     Table &working_table = tables[0];
-    std::vector<bool> applied(action.get_static_precondition().size(), false);
+    std::vector<bool> static_applied(action.get_static_precondition().size(), false);
+    std::vector<bool> negated_applied(actiondata.negated_precondition.size(), false);
+    // run filters after every join;
+    // they may even already be applicable on the first table before any join
+    // (and if there are no other tables):
+    filter_static(action, working_table, static_applied);
+    filter_negated(actiondata, state, working_table, negated_applied);
     for (size_t i = 1; i < tables.size(); ++i) {
         hash_join(working_table, tables[i]);
         // Filter out equalities
-        filter_static(action, working_table, applied);
+        filter_static(action, working_table, static_applied);
+        filter_negated(actiondata, state, working_table, negated_applied);
         if (working_table.tuples.empty()) {
             return working_table;
         }
@@ -56,13 +64,74 @@ Table GenericNegationJoinSuccessorGenerator::instantiate(const ActionSchema &act
     return working_table;
 }
 
-void GenericNegationJoinSuccessorGenerator::filter_static(const ActionSchema &action,
-                                         Table &working_table,
-                                         std::vector<bool> &applied)
+void GenericNegationJoinSuccessorGenerator::filter_negated(
+    const PrecompiledActionData &actiondata,
+    const DBState &state,
+    Table &working_table,
+    std::vector<bool> &applied)
 {
     const auto& tup_idx = working_table.tuple_index;
+    const auto& negated_precond = actiondata.negated_precondition;
+    for (size_t k = 0; k < negated_precond.size(); ++k) {
 
-    const auto &static_precond = action.get_static_precondition();
+        // the filter has already been applied before
+        if (applied[k]) continue;
+
+        const Atom &atom = negated_precond[k];
+        const std::vector<int> &constants = actiondata.negated_constants[k];
+        int pred_idx = atom.get_predicate_symbol_idx();
+        const std::vector<Argument> &args = atom.get_arguments();
+
+        bool all_variables_covered = true;
+        // TODO: precompute the column indices in precompute_action_data and check here only whether the highest required column is already in working_table
+        vector<int> column_idx;
+        for (const Argument &arg : args) {
+            if (arg.is_constant()) {
+                column_idx.push_back(-1);
+                continue;
+            }
+            int index = utils::index_of(tup_idx, arg.get_index());
+            if (index == -1) {
+                all_variables_covered = false;
+                break;
+            }
+            column_idx.push_back(index);
+        }
+        // the filter variables are not present in the table yet
+        if (!all_variables_covered) continue;
+
+        const unordered_set<GroundAtom, TupleHash> &tuples =
+            actiondata.negated_static[k]
+            ? get_tuples_from_static_relation(pred_idx)
+            : state.get_tuples_of_relation(pred_idx);
+
+        GroundAtom projection;
+        projection.resize(args.size());
+        vector<Table::tuple_t> newtuples;
+        for (const GroundAtom &t : working_table.tuples) {
+            // project tuple onto the arguments of the negated atom
+            for (size_t i = 0; i < args.size(); ++i) {
+                projection[i] = constants[i];
+                if (projection[i] < 0)
+                    projection[i] = t[column_idx[i]];
+            }
+            // keep tuple if the projection is not in the tuples corresponding to the negated atom
+            if (tuples.find(projection) == tuples.end()) {
+                newtuples.push_back(std::move(t));
+            }
+        }
+        working_table.tuples = std::move(newtuples);
+        applied[k] = true;
+    }
+}
+
+void GenericNegationJoinSuccessorGenerator::filter_static(
+    const ActionSchema &action,
+    Table &working_table,
+    std::vector<bool> &applied)
+{
+    const auto& tup_idx = working_table.tuple_index;
+    const auto& static_precond = action.get_static_precondition();
     for (size_t k = 0; k < static_precond.size(); ++k) {
         // Once a precondition has been enforced, every later join only adds
         // columns and recombines surviving tuples, so the constrained columns
@@ -192,16 +261,26 @@ PrecompiledActionData GenericNegationJoinSuccessorGenerator::precompile_action_d
     data.is_ground = action.get_parameters().empty();
     if (data.is_ground) return data; // We won't need anything from this action
 
-
     for (const Atom &p : action.get_precondition()) {
         bool is_ineq = (p.get_name() == "=");
-        if (p.is_negated() and !is_ineq) {
-            throw std::runtime_error("Actions with negated preconditions not supported yet");
-        }
-
         // Nullary atoms are handled differently, they don't result in DB tables
-        if (!p.is_ground() and !is_ineq) {
+        if (!p.is_ground() and !is_ineq and !p.is_negated()) {
             data.relevant_precondition_atoms.push_back(p);
+        }
+        // Negated (safe) preconditions are treated as (non-static) filters
+        if (!is_ineq and p.is_negated()) {
+            std::vector<int> constants;
+            for (const Argument &arg : p.get_arguments()) {
+                if (arg.is_constant()) {
+                    constants.push_back(arg.get_index());
+                } else {
+                    constants.push_back(-1);
+                }
+            }
+
+            data.negated_precondition.push_back(p);
+            data.negated_constants.push_back(constants);
+            data.negated_static.push_back(is_static(p.get_predicate_symbol_idx()));
         }
     }
 
@@ -239,8 +318,6 @@ PrecompiledActionData GenericNegationJoinSuccessorGenerator::precompile_action_d
 
     return data;
 }
-
-
 
 bool GenericNegationJoinSuccessorGenerator::parse_precond_into_join_program(
     const PrecompiledActionData &adata, const DBState &state, std::vector<Table>& tables)

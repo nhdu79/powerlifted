@@ -7,6 +7,7 @@
 #include "ordered_join_successor.h"
 #include "random_successor.h"
 #include "yannakakis.h"
+#include "generic_negation_join_successor_generator.h"
 
 #include "../database/table.h"
 
@@ -20,7 +21,7 @@ SuccessorGeneratorFactory::create(const std::string &method, unsigned seed, Task
 {
     std::cout << "Creating successor generator factory..." << std::endl;
     if (utils::iequals(method, "join")) {
-        return new NaiveSuccessorGenerator(task);
+        return new GenericNegationJoinSuccessorGenerator(task);
     }
     else if (utils::iequals(method, "full_reducer")) {
         return new FullReducerSuccessorGenerator(task);

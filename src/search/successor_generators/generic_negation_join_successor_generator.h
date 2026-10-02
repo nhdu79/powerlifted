@@ -90,7 +90,13 @@ protected:
 
     static void filter_static(const ActionSchema &action,
                               Table &working_table,
-                              std::vector<bool> &applied) ;
+                              std::vector<bool> &applied);
+
+    void filter_negated(const PrecompiledActionData &actiondata,
+                               const DBState &state,
+                               Table &working_table,
+                               std::vector<bool> &applied);
+
     static void create_hypergraph(
         const ActionSchema &action,
         std::vector<int> &hypernodes,

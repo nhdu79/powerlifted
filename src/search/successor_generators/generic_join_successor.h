@@ -164,6 +164,15 @@ public:
 
     //! A set of tables with all static info precompiled for faster access at runtime
     std::vector<Table> precompiled_db;
+
+    // all negated preconditions (except =), static or not
+    std::vector<Atom> negated_precondition;
+
+    // vectors containing all constants in the precondition's arguments, and -1 for each variable
+    std::vector<std::vector<int>> negated_constants;
+
+    // indicates which negated preconditions are static
+    std::vector<bool> negated_static;
 };
 
 #endif //SEARCH_GENERIC_JOIN_SUCCESSOR_H
