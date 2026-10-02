@@ -38,6 +38,7 @@ from owl import (  # noqa: E402
     OWL_THING,
     Ontology,
     QualifiedExistentialConcept,
+    SelfConcept,
     normalize_ontology,
 )
 from owl.parser import UnsupportedConstructError  # noqa: E402
@@ -226,6 +227,23 @@ class EqualityInUpperboundTest(unittest.TestCase):
 
         self.assertNotIn(SYMMETRY, rules)
         self.assertFalse(any(r in rules for r in una_rules(["a", "b"])))
+
+    def test_self_sub_adds_no_equality_or_una_rules(self):
+        # O5's body reads x ≈ y, but reflexivity is already in the initial
+        # state, so it must not bring in (EQ1)-(EQ4) or the UNA rules.
+        ontology = _ontology(ConceptInclusion(SelfConcept(R), A), roles=(R,))
+
+        rules = compute_upperbound_rules(ontology, constants=["a", "b"])
+
+        self.assertEqual(
+            rules,
+            [
+                DisjunctiveExistentialRule(
+                    effect=(Atom("a", ("?x",)),),
+                    body=(Atom("r", ("?x", "?y")), Atom("=", ("?x", "?y"))),
+                )
+            ],
+        )
 
     def test_number_restriction_adds_equality_and_una_rules(self):
         ontology = _ontology(FunctionalRole(R), roles=(R,))

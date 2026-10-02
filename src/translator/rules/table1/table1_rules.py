@@ -4,20 +4,25 @@ O1-O14 - classified axioms) into its DisjunctiveExistentialRule — the pi
 mapping from Table 1, page 7, of Zhou et al. 2015 ("Pay-as-you-go ABox
 Reasoning"):
 
-    O1    A1 ⊓ … ⊓ An  ⊑ ⊥          ⋀Ai(x) → ⊥
-    O2    A1 ⊓ … ⊓ An  ⊑ B1 ⊔ … ⊔ Bm ⋀Ai(x) → ⋁Bj(x)
-    O3    ∃R.A          ⊑ B          R(x,y) ∧ A(y) → B(x)
-    O4    A             ⊑ Self(R)    A(x) → R(x,x)
-    O5    Self(R)         ⊑ A          R(x,x) → A(x)
-    O6    R             ⊑ S          R(x,y) → S(x,y)
-    O7    R             ⊑ S⁻          R(x,y) → S(y,x)
-    O8    R ∘ S          ⊑ T          R(x,z) ∧ S(z,y) → T(x,y)
-    O9    R ⊓ S          ⊑ ⊥          R(x,y) ∧ S(x,y) → ⊥
-    O10   A             ⊑ ∃R.B        A(x) → ∃y (R(x,y) ∧ B(y))   [normalised, below]
-    O11   A             ⊑ ≤m R.B      A(x) ∧ ⋀_{i=1}^{m+1}[R(x,yi)∧B(yi)]
-                                         → ⋁_{i<j} yi ≈ yj
-    O12   A             ⊑ {a}         A(x) → x ≈ a
-    O13   ⊤             ⊑ ∀R.A        R(x,y) → A(y)
+    O1    A1 ⊓ … ⊓ An   ⊑ ⊥            ⋀ Ai(x) → ⊥
+    O2    A1 ⊓ … ⊓ An   ⊑ B1 ⊔ … ⊔ Bm  ⋀ Ai(x) → ⋁Bj(x)
+    O3    ∃R.A          ⊑ B            R(x,y) ∧ A(y) → B(x)
+    O4    A             ⊑ Self(R)      A(x) → R(x,x)
+    O5    Self(R)       ⊑ A            R(x,y) ∧ x ≈ y → A(x)   [see below]
+    O6    R             ⊑ S            R(x,y) → S(x,y)
+    O7    R             ⊑ S⁻           R(x,y) → S(y,x)
+    O8    R ∘ S         ⊑ T            R(x,z) ∧ S(z,y) → T(x,y)
+    O9    R ⊓ S         ⊑ ⊥            R(x,y) ∧ S(x,y) → ⊥
+    O10   A             ⊑ ∃R.B         A(x) → ∃y (R(x,y) ∧ B(y))   [normalised, below]
+    O11   A             ⊑ ≤m R.B       A(x) ∧ ⋀_{i=1}^{m+1}[R(x,yi)∧B(yi)]
+                                                → ⋁_{i<j} yi ≈ yj
+    O12   A             ⊑ {a}          A(x) → x ≈ a
+    O13   ⊤             ⊑ ∀R.A         R(x,y) → A(y)
+
+O5 corresponds to R(x,x) → A(x), with the repeated variable split into
+x ≈ y, as the search doesn't allow a variable twice in a body atom. Does
+not trigger (EQ1)-(EQ4) nor the UNA rules due to reflexivity in (see
+pddl_parser/parsing_functions.py).
 
 O14 (A ⊑ ≥m R.B) is not in the paper's own Table 1: the generalisation of
 O10 to m fillers, with their pairwise distinctness recorded by the
@@ -143,7 +148,7 @@ def translate_o4(ax: ConceptInclusion) -> list[DisjunctiveExistentialRule]:
 
 def translate_o5(ax: ConceptInclusion) -> list[DisjunctiveExistentialRule]:
     role = ax.sub.role
-    body = (role_atom(role, X, X),)
+    body = (role_atom(role, X, Y), Atom(EQUALITY_PREDICATE, (X, Y)))
     return [DisjunctiveExistentialRule(effect=(concept_atom(ax.sup, X),), body=body)]
 
 
