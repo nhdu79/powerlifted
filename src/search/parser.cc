@@ -267,7 +267,9 @@ int parse_action_schemas(Task &task, int number_action_schemas)
  * the number of effect atoms (0: bottom), body atoms and variables, then
  * one line per effect atom and per body atom:
  *   name predicate_index negated number_args (c|p index)*
- * 'c' is an object index, 'p' a variable index, numbered per rule.
+ * 'c' is an object index, 'p' a variable index, numbered per rule. Negated
+ * atoms aren't supported (the translator rewrites Clipper's inequality
+ * denials into rules deriving "="), so negated must be 0.
  */
 static datalog::DatalogAtom parse_rule_atom(const string &section)
 {
@@ -276,6 +278,11 @@ static datalog::DatalogAtom parse_rule_atom(const string &section)
     bool negated;
     int number_args;
     cin >> name >> predicate_index >> negated >> number_args;
+    if (negated) {
+        cerr << "Error while reading " << section << ": negated atom " << name
+             << " is not supported." << endl;
+        utils::exit_with(utils::ExitCode::SEARCH_UNSUPPORTED);
+    }
     vector<datalog::Term> terms;
     for (int k = 0; k < number_args; ++k) {
         char c;
@@ -294,7 +301,7 @@ static datalog::DatalogAtom parse_rule_atom(const string &section)
         }
     }
     return datalog::DatalogAtom(
-        datalog::Arguments(std::move(terms)), predicate_index, false, negated);
+        datalog::Arguments(std::move(terms)), predicate_index, false);
 }
 
 unique_ptr<datalog::DisjunctiveExistentialProgram>

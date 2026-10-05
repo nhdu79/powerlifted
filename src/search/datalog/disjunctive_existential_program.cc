@@ -121,9 +121,6 @@ void DisjunctiveExistentialProgram::output_rule(const DisjunctiveExistentialRule
 }
 
 void DisjunctiveExistentialProgram::output_atom(const DatalogAtom &atom) const {
-    if (atom.is_negated()) {
-        std::cout << "not ";
-    }
     std::cout << predicate_names[atom.get_predicate_index()];
     output_parameters(atom.get_arguments());
 }

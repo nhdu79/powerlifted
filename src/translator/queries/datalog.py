@@ -8,7 +8,7 @@ Every step here works in the task's spelling, i.e. after rename_rules.
 """
 
 from pddl import Atom, Predicate, TypedObject
-from rules import DisjunctiveExistentialRule
+from rules import DisjunctiveExistentialRule, una_rules
 from rules.atoms import EQUALITY_PREDICATE
 
 from .naming import get_query_id, query_predicate_name
@@ -52,6 +52,59 @@ def deduplicate_rules(rules, unparameterized):
     return list(unique), duplicates
 
 
+def _is_inequality(atom):
+    return atom.negated and atom.predicate == EQUALITY_PREDICATE
+
+
+def move_inequalities_to_effect(rules):
+    """Rewrite each denial y ≠ z ∧ B → ⊥ (e.g. Clipper's rewriting of a
+    functionality or at-most-one restriction) as B → y = z, as the search
+    doesn't support negated atoms.
+
+    Both are the same formula (¬(y ≠ z ∧ B) ≡ B → y = z); the derived y = z
+    is an inconsistency for distinct constants once the UNA rules are added
+    (see lowerbound_una_rules), and harmless for y = z. A rule with x ≠ x is
+    dropped, as its body never holds.
+
+    Raises ValueError for an inequality in a rule with a non-empty effect, or
+    for several inequalities in one rule (that would need a disjunction of
+    equalities over different arguments, which the search doesn't support).
+    """
+    rewritten = []
+    for rule in rules:
+        inequalities = [a for a in rule.body if _is_inequality(a)]
+        if not inequalities:
+            rewritten.append(rule)
+            continue
+        if rule.effect or len(inequalities) > 1:
+            raise ValueError(
+                "only denials with a single inequality are supported: "
+                f"{rule}"
+            )
+        left, right = inequalities[0].args
+        if left == right:
+            continue
+        rewritten.append(
+            DisjunctiveExistentialRule(
+                effect=(Atom(EQUALITY_PREDICATE, (left, right)),),
+                body=tuple(a for a in rule.body if not _is_inequality(a)),
+            )
+        )
+    return rewritten
+
+
+def _derives_equality(rule):
+    return any(a.predicate == EQUALITY_PREDICATE for a in rule.effect)
+
+
+def lowerbound_una_rules(rules, constants):
+    """The UNA rules (rules.una_rules) over constants if some rule derives
+    "=" (see move_inequalities_to_effect), else none."""
+    if any(_derives_equality(rule) for rule in rules):
+        return una_rules(constants)
+    return []
+
+
 def _positive_body_predicates(rule):
     return {
         a.predicate
@@ -90,8 +143,9 @@ def filter_irrelevant_rules(rules, queried_predicates, num_ucqs):
 
     Backward reachability from the queried atoms and the QUERY<i> heads; a
     denial (empty effect, i.e. bottom) is always relevant, as it's what
-    detects inconsistency. The body predicates of relevant rules become
-    needed in turn.
+    detects inconsistency, and so is a rule deriving "=" (a denial under UNA,
+    see move_inequalities_to_effect). The body predicates of relevant rules
+    become needed in turn.
 
     Returns (relevant_rules, irrelevant_rules), both in input order.
     """
@@ -99,7 +153,11 @@ def filter_irrelevant_rules(rules, queried_predicates, num_ucqs):
     needed |= {query_predicate_name(i) for i in range(num_ucqs)}
 
     def is_relevant(rule):
-        return not rule.effect or any(a.predicate in needed for a in rule.effect)
+        return (
+            not rule.effect
+            or _derives_equality(rule)
+            or any(a.predicate in needed for a in rule.effect)
+        )
 
     changed = True
     while changed:

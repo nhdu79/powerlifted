@@ -1,7 +1,7 @@
 ### Aktl.
 
-- [ ] Remove negation in `DatalogAtom` (not supported!)
-- [ ] Remove inequality in LB rules!
+- [x] Remove negation in `DatalogAtom` (not supported!)
+- [x] Remove inequality in LB rules!
 
 ### Later
 - [x] Konnect Konclude

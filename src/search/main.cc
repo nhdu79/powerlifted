@@ -6,6 +6,8 @@
 #include "plan_manager.h"
 #include "task.h"
 
+#include "datalog/disjunctive_existential_program.h"
+
 #include "heuristics/heuristic.h"
 #include "heuristics/heuristic_factory.h"
 #include "search_engines/search.h"
@@ -63,6 +65,15 @@ int main(int argc, char *argv[])
     if (!parsed) {
         cerr << "Parser failed." << endl;
         exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+    }
+
+    if (opt.get_print_rules()) {
+        cout << "LOWERBOUND-RULES" << endl;
+        task.get_lowerbound_program().output_rules();
+        cout << "UPPERBOUND-RULES" << endl;
+        task.get_upperbound_program().output_rules();
+        cout << "END-RULES" << endl;
+        exit_with(utils::ExitCode::SUCCESS);
     }
 
     /*
