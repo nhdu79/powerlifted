@@ -18,6 +18,7 @@ class Options {
     bool full_novelty_check;
     bool novelty_early_stop;
     bool konclude;
+    bool print_rules;
     unsigned seed;
 
     static void print_help()
@@ -35,7 +36,9 @@ class Options {
                   << "  --novelty-early-stop[=BOOL] Stop evaluating novelty early "
                      "(default: false)\n"
                   << "  --use-konclude[=BOOL] Use the embedded Konclude reasoner "
-                     "(default: false; not supported yet)\n";
+                     "(default: false; not supported yet)\n"
+                  << "  --print-rules[=BOOL] Print the parsed lowerbound and upperbound "
+                     "rules and exit (default: false)\n";
     }
 
     static bool is_option_name(const std::string &arg)
@@ -138,6 +141,7 @@ public:
           full_novelty_check(false),
           novelty_early_stop(false),
           konclude(false),
+          print_rules(false),
           seed(1)
     {
         std::vector<std::string> args(argv + 1, argv + argc);
@@ -183,6 +187,10 @@ public:
                          has_inline_value(arg, "--use-konclude")) {
                     konclude = take_bool_value(args, i, "--use-konclude");
                 }
+                else if (is_named_option(arg, "--print-rules") ||
+                         has_inline_value(arg, "--print-rules")) {
+                    print_rules = take_bool_value(args, i, "--print-rules");
+                }
                 else if (is_option_name(arg)) {
                     throw std::runtime_error("Unknown option '" + arg + "'.");
                 }
@@ -215,6 +223,8 @@ public:
     bool get_novelty_early_stop() const { return novelty_early_stop; }
 
     bool use_konclude() const { return konclude; }
+
+    bool get_print_rules() const { return print_rules; }
 
     unsigned get_seed() const { return seed; }
 };

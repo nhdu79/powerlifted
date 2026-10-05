@@ -10,7 +10,8 @@ coherence update), and the ontology into upperbound rules:
    with a rule per conjunctive query deriving its QUERY<i>;
 4. format the queries for Clipper and rewrite them together with the shifted
    ontology (queries.rewriter, rules.lowerbound);
-5. clean up Clipper's rules and declare the predicates the lowerbound and
+5. clean up Clipper's rules (rewriting each inequality denial into a rule
+   deriving "=", plus the UNA rules) and declare the predicates the lowerbound and
    upperbound rules use that the task doesn't (queries.datalog);
 6. replace every mko by the literal reading its answer, flagged mko (see
    pddl.conditions.Literal), which the search evaluates w.r.t. the rules.
@@ -159,8 +160,10 @@ def process_ontology(
     # Before the mkos are replaced, so an "=" inside one counts too. Tells the
     # upperbound to add the equality axioms and UNA rules (which it also does
     # if the ontology has number restrictions or nominals). The lowerbound
-    # needs neither: Clipper derives no "=", it rewrites number restrictions
-    # into denials over distinct fillers.
+    # needs no equality axioms: Clipper derives no "=", it rewrites number
+    # restrictions into denials over distinct fillers — which
+    # datalog.move_inequalities_to_effect turns into rules deriving "=", so
+    # it gets the UNA rules if any such rule is kept.
     task_uses_equality = _task_uses_equality(task)
     shifted_axioms = shifted_ontology_axioms(ontology)
     ontology_names.add_generated(shifted_axioms)
@@ -195,6 +198,7 @@ def process_ontology(
     )
 
     lowerbound_rules = datalog.rename_rules(clipper_rules, clipper_spelling)
+    lowerbound_rules = datalog.move_inequalities_to_effect(lowerbound_rules)
     lowerbound_rules, duplicate_rules = datalog.deduplicate_rules(
         lowerbound_rules, unparameterized_query_ids
     )
@@ -207,6 +211,10 @@ def process_ontology(
         lowerbound_rules, irrelevant_rules = datalog.filter_irrelevant_rules(
             lowerbound_rules, collector.queried_predicates, len(collector.ucqs)
         )
+    # After the filters: only needed if a rule deriving "=" is kept.
+    lowerbound_rules += datalog.lowerbound_una_rules(
+        lowerbound_rules, [obj.name for obj in task.objects]
+    )
 
     new_predicate_declarations = datalog.predicate_declarations(
         lowerbound_rules + upperbound_rules, task.predicates

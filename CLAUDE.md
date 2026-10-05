@@ -79,7 +79,13 @@ python dev/run-tests.py --minimal     # small/fast subset
 python dev/run-tests.py               # full local suite
 python dev/run-tests.py --store-results dev/results.json     # save timing baseline
 python dev/run-tests.py --compare-results dev/results.json   # compare against baseline
+python dev/test-rule-parser.py        # search's parsing of LB/UB rules (needs Clipper)
 ```
+
+`dev/test-rule-parser.py` translates the ontology tasks, decodes the
+`.lifted` file's rule sections in Python, and compares them with what the
+search parsed (printed via the search's `--print-rules`). It also checks that
+malformed rule atoms are rejected.
 
 Run the suite serially — the planner writes a shared intermediate file
 (`output.lifted`) in the working directory by default, so concurrent runs can
