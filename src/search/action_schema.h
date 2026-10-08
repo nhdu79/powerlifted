@@ -17,7 +17,7 @@ class ActionSchema {
     std::vector<FreshVariable> fresh_variables;
     std::vector<Atom> precondition;
     std::vector<Atom> effects;
-    std::vector<Atom> static_precondition;
+    std::vector<Atom> equality_precondition;
 
     /*
      * Nullary predicates are represented as boolean vectors to simplify
@@ -37,7 +37,7 @@ public:
                           std::vector<FreshVariable> fresh_variables,
                           std::vector<Atom> precondition,
                           std::vector<Atom> effects,
-                          std::vector<Atom> static_precondition,
+                          std::vector<Atom> equality_precondition,
                           std::vector<bool> positive_nullary_precond,
                           std::vector<bool> negative_nullary_precond,
                           std::vector<bool> positive_nullary_effects,
@@ -71,8 +71,8 @@ public:
         return effects;
     }
 
-    const std::vector<Atom> &get_static_precondition() const {
-        return static_precondition;
+    const std::vector<Atom> &get_equality_precondition() const {
+        return equality_precondition;
     }
 
     const std::vector<bool> &get_positive_nullary_precond() const {

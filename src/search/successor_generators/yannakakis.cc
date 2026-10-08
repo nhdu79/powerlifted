@@ -175,7 +175,7 @@ void YannakakisSuccessorGenerator::get_distinguished_variables(const ActionSchem
         }
     }
 
-    for (const Atom& atom : action.get_static_precondition()) {
+    for (const Atom& atom : action.get_equality_precondition()) {
         // TODO: for now, we assume all static preconditions are
         //       (in)equalities. This may change in future
         const std::vector<Argument> &args = atom.get_arguments();
@@ -253,7 +253,7 @@ Table YannakakisSuccessorGenerator::instantiate(const ActionSchema &action,
         // subtree and projects columns away, so the linear-join dedup used by
         // the other generators is not valid here — keep the original behaviour
         // of re-checking every static precondition.
-        std::vector<bool> applied(action.get_static_precondition().size(), false);
+        std::vector<bool> applied(action.get_equality_precondition().size(), false);
         filter_static(action, working_table, applied);
         project(working_table, project_over);
         if (working_table.tuples.empty()) {
@@ -263,7 +263,7 @@ Table YannakakisSuccessorGenerator::instantiate(const ActionSchema &action,
 
     // For the case where the action schema is cyclic
     Table &working_table = tables[remaining_join[action.get_index()][0]];
-    std::vector<bool> applied_cyclic(action.get_static_precondition().size(), false);
+    std::vector<bool> applied_cyclic(action.get_equality_precondition().size(), false);
     for (size_t i = 1; i < remaining_join[action.get_index()].size(); ++i) {
         hash_join(working_table, tables[remaining_join[action.get_index()][i]]);
         // Reset so each join re-checks every precondition (preserve original

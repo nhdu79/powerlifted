@@ -43,7 +43,7 @@ Table GenericJoinSuccessor::instantiate(const ActionSchema &action,
     assert(tables.size() == actiondata.relevant_precondition_atoms.size());
 
     Table &working_table = tables[0];
-    std::vector<bool> applied(action.get_static_precondition().size(), false);
+    std::vector<bool> applied(action.get_equality_precondition().size(), false);
     for (size_t i = 1; i < tables.size(); ++i) {
         hash_join(working_table, tables[i]);
         // Filter out equalities
@@ -62,7 +62,7 @@ void GenericJoinSuccessor::filter_static(const ActionSchema &action,
 {
     const auto& tup_idx = working_table.tuple_index;
 
-    const auto &static_precond = action.get_static_precondition();
+    const auto &static_precond = action.get_equality_precondition();
     for (size_t k = 0; k < static_precond.size(); ++k) {
         // Once a precondition has been enforced, every later join only adds
         // columns and recombines surviving tuples, so the constrained columns

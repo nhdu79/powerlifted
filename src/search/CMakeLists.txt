@@ -26,7 +26,8 @@ set(DATABASE_SOURCES
         database/hash_semi_join.cc
         database/project.cc
         database/table.cc
-        database/utils.cc)
+        database/utils.cc
+        database/query.cc)
 
 set(DATALOG_SOURCES
         datalog/datalog.cc
@@ -148,7 +149,7 @@ target_link_libraries(c_chase_test PRIVATE project_options)
 
 target_compile_options(search PRIVATE
         $<$<CONFIG:Release>:-O3 -g -DNDEBUG -fomit-frame-pointer -Werror>
-        $<$<CONFIG:Debug>:-O0 -pg -fsanitize=undefined -fno-omit-frame-pointer>)
+        $<$<CONFIG:Debug>:-O0 $<$<NOT:$<PLATFORM_ID:Darwin>>:-pg> -fsanitize=address,undefined -fno-omit-frame-pointer>)
 
 target_link_options(search PRIVATE
-        $<$<CONFIG:Debug>:-pg -fsanitize=undefined>)
+        $<$<CONFIG:Debug>: $<$<NOT:$<PLATFORM_ID:Darwin>>:-pg> -fsanitize=address,undefined>)

@@ -65,6 +65,14 @@ bool parse(Task &task, const ifstream &in)
     cout << "Total number of atoms in the initial state: " << initial_state_size << endl;
     task.create_empty_initial_state(task.predicates.size(), number_objects);
     parse_initial_state(task, initial_state_size);
+    
+
+    // ************************************************************************
+    // TODO:
+    // * Parse axioms
+    // * Apply axioms to initial state (maybe a separate part for derived
+    //   predicates?)
+    // ************************************************************************
 
 
     int goal_size;
@@ -96,7 +104,7 @@ void parse_action_schemas(Task &task, int number_action_schemas)
         cin >> name >> cost >> args >> num_fresh_vars >> precond_size >> eff_size;
         vector<Parameter> parameters;
         vector<FreshVariable> fresh_vars;
-        vector<Atom> preconditions, static_preconditions, effects;
+        vector<Atom> preconditions, equality_preconditions, effects;
         vector<bool> positive_nul_precond(task.predicates.size(), false),
             negative_nul_precond(task.predicates.size(), false),
             positive_nul_eff(task.predicates.size(), false),
@@ -136,7 +144,7 @@ void parse_action_schemas(Task &task, int number_action_schemas)
                 vector<Argument> arguments;
                 arguments.emplace_back(id1, c == 'c', false);
                 arguments.emplace_back(id2, d == 'c', false);
-                static_preconditions.emplace_back(
+                equality_preconditions.emplace_back(
                     std::move(arguments), std::move(precond_name), index, negated);
             }
             else {
@@ -208,7 +216,7 @@ void parse_action_schemas(Task &task, int number_action_schemas)
                        fresh_vars,
                        preconditions,
                        effects,
-                       static_preconditions,
+                       equality_preconditions,
                        positive_nul_precond,
                        negative_nul_precond,
                        positive_nul_eff,
