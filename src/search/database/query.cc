@@ -3,18 +3,22 @@
 #include "hash_join.h"
 #include "../utils/collections.h"
 
+#include <algorithm>
+#include <unordered_set>
+#include <cassert>
+
 using namespace std;
 
 Query::Query(const vector<Atom> &atoms, const vector<Atom> &equality_atoms,
     const vector<bool> &nullary_positive_atoms, const vector<bool> &nullary_negated_atoms,
-    const vector<Relation> &static_relations) :
-    static_relations(&static_relations) {
+    const vector<Relation> &static_rel) :
+    static_relations(&static_rel) {
 
     // Nullary atoms could be static, because the translator does not eliminate them.
     // Here, we have to treat them as non-static, because they are not present in static_relations
     // (nor in task.get_static_info()).
     // TODO: fix this in the translator and parser
-    for (int i = 0; i < nullary_positive_atoms.size(); ++i) {
+    for (size_t i = 0; i < nullary_positive_atoms.size(); ++i) {
         if (nullary_positive_atoms[i]) {
             nullary_atoms.emplace_back(i, false);
         }
@@ -24,9 +28,9 @@ Query::Query(const vector<Atom> &atoms, const vector<Atom> &equality_atoms,
     }
 
     int join_step = 0;
-    vector<int> first_step;  // join step at which each column in q.tuple_idx is added
+    vector<int> first_step;  // join step at which each column in tuple_idx is added
     for (const Atom &atom : atoms) {
-        const Relation &rel = static_relations[atom.get_predicate_symbol_idx()];
+        const Relation &rel = (*static_relations)[atom.get_predicate_symbol_idx()];
 
         bool ground = true;
         for (const Argument &arg : atom.get_arguments()) {
@@ -38,14 +42,14 @@ Query::Query(const vector<Atom> &atoms, const vector<Atom> &equality_atoms,
         if (ground) {
             if (!rel.tuples.empty()) {
                 // static ground atom
-                if (!static_ground_atom_satisfied(atom, rel)) {
+                if (static_ground_atom_violated(atom, rel)) {
                     statically_unsatisfiable = true;
                     return;
                 } // if it is satisfied, discard the atom
             } else {
                 // non-static ground atom are special filter atoms that are checked
                 // before computing any joins
-                ground_atoms.push_back(compile_filter_atom(atom, rel));
+                ground_atoms.push_back(compile_ground_filter_atom(atom));
             }
             continue;
         }
@@ -56,12 +60,11 @@ Query::Query(const vector<Atom> &atoms, const vector<Atom> &equality_atoms,
             continue;
         }
 
-        // positive, non-ground atom: continue building q.tuple_idx and first_step
+        // positive, non-ground atom: continue building tuple_idx and first_step
         SelectionPattern pattern = compile_selection_pattern(atom);
         bool new_vars = false;
-        vector<int> before = tuple_idx;
         for (int var : pattern.vars) {
-            if (!utils::contains(before, var)) {
+            if (!utils::contains(tuple_idx, var)) {
                 tuple_idx.push_back(var);
                 first_step.push_back(join_step);
                 new_vars = true;
@@ -69,27 +72,34 @@ Query::Query(const vector<Atom> &atoms, const vector<Atom> &equality_atoms,
         }
         if (new_vars) {
             // atom contributes at least one new variable
-            join_atoms.push_back(compile_join_atom(atom, rel, pattern));
+            JoinAtom join_atom = compile_join_atom(pattern, rel);
+            if (join_atom.is_static && join_atom.precompiled.tuples.empty()) {
+                statically_unsatisfiable = true;
+                return;
+            }
+            join_atoms.push_back(join_atom);
             ++join_step;
         } else {
             // atom is used as a filter over the existing variables
+            // TODO: taking into account type information of all atoms, we could maybe
+            // avoid using most type@... atoms as filters here (just discard them)
             filter_atoms.push_back(compile_filter_atom(atom, rel));
         }
     }
 
     for (const Atom &atom : equality_atoms) {
-        vector<Argument> args = atom.get_arguments();
+        const vector<Argument> &args = atom.get_arguments();
         assert(args.size() == 2);
         if (args[0].is_constant() && args[1].is_constant()) {
             // ground equality atom
-            if (!ground_eq_atom_satisfied(atom)) {
+            if (ground_eq_atom_violated(atom)) {
                 statically_unsatisfiable = true;
                 return;
             } // if it is satisfied, discard the atom
         } else {
             // non-ground equality atoms are always (static) filter atoms
             eq_filters.push_back(
-                compile_filter_atom(atom, static_relations[atom.get_predicate_symbol_idx()]));
+                compile_filter_atom(atom, (*static_relations)[atom.get_predicate_symbol_idx()]));
         }
     }
 
@@ -119,14 +129,10 @@ Table Query::evaluate(const vector<Relation> &relations, const vector<bool> &nul
 
     // handle ground atoms first via lookups to avoid joins with single-tuple relations
     // (these ground atoms cannot be static)
-    for (const FilterAtom &atom : ground_atoms) {
-        GroundAtom tuple;
-        for (int const_idx : atom.arg_map) {
-            tuple.push_back(-const_idx - 1);
-        }
-        const Relation &rel = relations[atom.predicate_idx];
-        bool present = (rel.tuples.find(tuple) != rel.tuples.end());
-        if (present == atom.negated) {
+    for (const GroundFilter &filter : ground_atoms) {
+        const Relation &rel = relations[filter.predicate_idx];
+        bool present = (rel.tuples.find(filter.tuple) != rel.tuples.end());
+        if (present == filter.negated) {
             return Table::EMPTY_TABLE();
         }
     }
@@ -139,27 +145,40 @@ Table Query::evaluate(const vector<Relation> &relations, const vector<bool> &nul
         return unit;
     }
 
-    vector<Table> tables;
+
+    // cheaply check if any of the relevant fluent tables is empty
     for (const JoinAtom &atom : join_atoms) {
-        if (atom.is_static) {
-            tables.push_back(atom.precompiled);
-        } else {
-            Table table = select_tuples(relations[atom.pattern.predicate_idx], atom.pattern);
-            if (table.tuples.empty()) {
-                return Table::EMPTY_TABLE();
-            }
-            tables.push_back(table);
+        if (!atom.is_static && relations[atom.pattern.predicate_idx].tuples.empty()) {
+            return Table::EMPTY_TABLE();
         }
     }
 
-    Table &working_table = tables[0];
-    filter(working_table, 0, relations);
-    filter_eq(working_table, 0, relations);
+    Table working_table;
+    for (size_t join_step = 0; join_step < join_atoms.size(); ++join_step) {
+        const JoinAtom &atom = join_atoms[join_step];
+        Table fluent; // owner of the current table if it is not static 
+        const Table *table = &atom.precompiled;
+        if (!atom.is_static) {
+            fluent = select_tuples(relations[atom.pattern.predicate_idx], atom.pattern);
+            table = &fluent;
+        }
+        if (table->tuples.empty()) {
+            return Table::EMPTY_TABLE();
+        }
 
-    for (int join_step = 1; join_step < tables.size(); ++join_step) {
-        hash_join(working_table, tables[join_step]);
+        if (join_step == 0) {
+            if (atom.is_static) {
+                working_table = *table;
+            } else {
+                // avoids a copy operation if first atom is not static
+                working_table = std::move(fluent);
+            }
+        } else {
+            hash_join(working_table, *table);
+        }
+        filter_eq(working_table, join_step);
         filter(working_table, join_step, relations);
-        filter_eq(working_table, join_step, relations);
+
         if (working_table.tuples.empty()) {
             return Table::EMPTY_TABLE();
         }
@@ -170,11 +189,12 @@ Table Query::evaluate(const vector<Relation> &relations, const vector<bool> &nul
     return working_table;
 }
 
-SelectionPattern Query::compile_selection_pattern(const Atom &a) {
+Query::SelectionPattern Query::compile_selection_pattern(const Atom &a) {
     SelectionPattern pattern;
     pattern.predicate_idx = a.get_predicate_symbol_idx();
-    int pos = 0;
-    for (const Argument &arg : a.get_arguments()) {
+    const vector<Argument> &args = a.get_arguments();
+    for (size_t pos = 0; pos < args.size(); ++pos) {
+        const Argument &arg = args[pos];
         if (arg.is_constant()) {
             pattern.const_checks.emplace_back(pos, arg.get_index());
             continue;
@@ -188,7 +208,6 @@ SelectionPattern Query::compile_selection_pattern(const Atom &a) {
             // duplicate variable
             pattern.eq_checks.emplace_back(pos, pattern.project[it - pattern.vars.begin()]);
         }
-        ++pos;
     }
     return pattern;
 }
@@ -225,7 +244,7 @@ Table Query::select_tuples(const Relation &rel, const SelectionPattern &pattern)
     return table;
 }
 
-JoinAtom Query::compile_join_atom(const Atom &atom, const Relation &rel, const SelectionPattern &pattern) {
+Query::JoinAtom Query::compile_join_atom(const SelectionPattern &pattern, const Relation &rel) {
     JoinAtom compiled_atom;
     compiled_atom.pattern = pattern;
     compiled_atom.is_static = !rel.tuples.empty();
@@ -235,7 +254,7 @@ JoinAtom Query::compile_join_atom(const Atom &atom, const Relation &rel, const S
     return compiled_atom;
 }
 
-FilterAtom Query::compile_filter_atom(const Atom &atom, const Relation &rel) {
+Query::FilterAtom Query::compile_filter_atom(const Atom &atom, const Relation &rel) {
     FilterAtom compiled_filter;
     compiled_filter.predicate_idx = atom.get_predicate_symbol_idx();
     compiled_filter.negated = atom.is_negated();
@@ -247,30 +266,40 @@ FilterAtom Query::compile_filter_atom(const Atom &atom, const Relation &rel) {
             compiled_filter.arg_map.push_back(-arg.get_index() - 1);
         } else {
             // at first, store the variable index in src
-            // this will later be updated to the column index of the variable in q.tuple_idx,
-            // once q.tuple_idx has been fully computed
+            // this will later be updated to the column index of the variable in tuple_idx,
+            // once tuple_idx has been fully computed
             compiled_filter.arg_map.push_back(arg.get_index());
         }
     }
     return compiled_filter;
 }
 
-bool Query::static_ground_atom_satisfied(const Atom &atom, const Relation &rel) {
+Query::GroundFilter Query::compile_ground_filter_atom(const Atom &atom) {
+    GroundFilter compiled_filter;
+    compiled_filter.predicate_idx = atom.get_predicate_symbol_idx();
+    compiled_filter.negated = atom.is_negated();
+    for (const Argument &arg : atom.get_arguments()) {
+        compiled_filter.tuple.push_back(arg.get_index());
+    }
+    return compiled_filter;
+}
+
+bool Query::static_ground_atom_violated(const Atom &atom, const Relation &rel) {
     GroundAtom tuple;
     for (const Argument &arg : atom.get_arguments()) {
         tuple.push_back(arg.get_index());
     }
     bool found = (rel.tuples.find(tuple) != rel.tuples.end());
-    return found != atom.is_negated(); // atom is satisfied
+    return found == atom.is_negated(); // atom is not satisfied
 }
 
-bool Query::ground_eq_atom_satisfied(const Atom &atom) {
+bool Query::ground_eq_atom_violated(const Atom &atom) {
     bool equal = atom.get_arguments()[0].get_index() == atom.get_arguments()[1].get_index();
-    return equal != atom.is_negated(); // atom is satisfied
+    return equal == atom.is_negated(); // atom is not satisfied
 }
 
 void Query::update_filter_atom(FilterAtom &atom, const vector<int> &tuple_idx, const vector<int> &first_step) {
-    for (int i = 0; i < atom.arg_map.size(); i++) {
+    for (size_t i = 0; i < atom.arg_map.size(); i++) {
         if (atom.arg_map[i] >= 0) {
             // if the argument is a variable, point instead to the column it comes from
             int var_idx = utils::index_of(tuple_idx, atom.arg_map[i]);
@@ -285,6 +314,12 @@ void Query::update_filter_atom(FilterAtom &atom, const vector<int> &tuple_idx, c
     }
 }
 
+template <class Pred>
+void Query::discard_tuples(vector<Table::tuple_t> &v, Pred p) {
+    v.erase(std::remove_if(v.begin(), v.end(), p), v.end());
+}
+
+// TODO: join filter and filter_eq to do only one pass over working_table and apply all filters per tuple?
 void Query::filter(Table &working_table, int join_step, const vector<Relation> &relations) const {
     for (const FilterAtom &filter : filter_atoms) {
         if (filter.join_step != join_step) {
@@ -297,36 +332,33 @@ void Query::filter(Table &working_table, int join_step, const vector<Relation> &
             ? (*static_relations)[filter.predicate_idx].tuples
             : relations[filter.predicate_idx].tuples;
 
-        vector<Table::tuple_t> newtuples;
         GroundAtom probe;
         probe.resize(filter.arg_map.size());
-        for (const GroundAtom &t : working_table.tuples) {
-            // construct probe tuple into filter relation
-            for (size_t i = 0; i < filter.arg_map.size(); ++i) {
-                if (filter.arg_map[i] >= 0) {
-                    // variable -> look up corresponding column in working_table
-                    probe[i] = t[filter.arg_map[i]];
-                } else {
-                    // constant -> decode into positive constant index
-                    probe[i] = -filter.arg_map[i] - 1;
+        discard_tuples(working_table.tuples,
+            [&](const Table::tuple_t &t) {
+                for (size_t i = 0; i < filter.arg_map.size(); ++i) {
+                    if (filter.arg_map[i] >= 0) {
+                        // variable -> look up corresponding column in working_table
+                        probe[i] = t[filter.arg_map[i]];
+                    } else {
+                        // constant -> decode into positive constant index
+                        probe[i] = -filter.arg_map[i] - 1;
+                    }
                 }
+                bool present = (tuples.find(probe) != tuples.end());
+                return present == filter.negated;
             }
-            bool present = (tuples.find(probe) != tuples.end());
-            if (present != filter.negated) {
-                newtuples.push_back(std::move(t));
-            }
-        }
-        working_table.tuples = std::move(newtuples);
+        );
     }
 }
 
-void Query::filter_eq(Table &working_table, int join_step, const vector<Relation> &relations) const {
+void Query::filter_eq(Table &working_table, int join_step) const {
     for (const FilterAtom &filter : eq_filters) {
         if (filter.join_step != join_step) {
             // the filter has already been applied or cannot be applied yet
             continue;
         }
-        
+
         // we can assume that the filter is not ground, since that case was handled during precompilation
         if (filter.arg_map[0] < 0 || filter.arg_map[1] < 0) {
             // one argument is a constant, the other a variable
@@ -339,26 +371,22 @@ void Query::filter_eq(Table &working_table, int join_step, const vector<Relation
                 const_idx = -filter.arg_map[1] - 1;
                 col_idx = filter.arg_map[0];
             }
-            vector<Table::tuple_t> newtuples;
-            for (const GroundAtom &t : working_table.tuples) {
-                bool equal = const_idx == t[col_idx];
-                if (equal != filter.negated) {
-                    newtuples.push_back(t);
+            discard_tuples(working_table.tuples,
+                [&](const Table::tuple_t &t) {
+                    bool equal = const_idx == t[col_idx];
+                    return equal == filter.negated;
                 }
-            }
-            working_table.tuples = std::move(newtuples);
+            );
         } else {
             // both arguments are variables
             int col_idx1 = filter.arg_map[0];
             int col_idx2 = filter.arg_map[1];
-            vector<Table::tuple_t> newtuples;
-            for (const GroundAtom &t : working_table.tuples) {
-                bool equal = t[col_idx1] == t[col_idx2];
-                if (equal != filter.negated) {
-                    newtuples.push_back(t);
+            discard_tuples(working_table.tuples, 
+                [&](const Table::tuple_t &t) {
+                    bool equal = t[col_idx1] == t[col_idx2];
+                    return equal == filter.negated;
                 }
-            }
-            working_table.tuples = std::move(newtuples);
+            );
         }
     }
 }
