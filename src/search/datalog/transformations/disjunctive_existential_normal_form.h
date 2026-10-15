@@ -135,8 +135,8 @@ void DisjunctiveExistentialProgram::convert_into_join_rules(
         JoinCost join_cost;
         int idx1 = std::numeric_limits<int>::max();
         int idx2 = std::numeric_limits<int>::max();
-        for (int i = 0; i < rule->get_conditions().size() - 1; ++i) {
-            for (int j = i+1; j < rule->get_conditions().size(); ++j) {
+        for (size_t i = 0; i < rule->get_conditions().size() - 1; ++i) {
+            for (size_t j = i+1; j < rule->get_conditions().size(); ++j) {
                 JoinCost cost = compute_join_cost_fast_downward(rule->get_conditions()[i],
                                                                 rule->get_conditions()[j]);
                 if (cost < join_cost) {

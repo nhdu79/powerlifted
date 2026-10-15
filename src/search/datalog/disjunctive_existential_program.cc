@@ -60,7 +60,7 @@ void DisjunctiveExistentialProgram::compute_distances_to_bottom() {
     Graph g(predicate_names.size() + 1);
 
     g.add_node(0);
-    for (int i=0; i < predicate_names.size(); ++i) {
+    for (size_t i=0; i < predicate_names.size(); ++i) {
         g.add_node(i + 1);
     }
 

@@ -103,7 +103,7 @@ int CChase::choice_function(const std::vector<DatalogAtom> &effect, const std::v
     // Prefer atoms with predicates that are "further away" from \bot in the dependency graph.
     // If a fact of the form \overline{P}(a) is derived by L_1, then try to avoid deriving P(a).
     int max_dist = std::numeric_limits<int>::min();
-    int max_idx;
+    int max_idx = -1;
     int max_dist_nonneg = std::numeric_limits<int>::min();
     int max_idx_nonneg;
     int atom_idx = 0;
@@ -134,6 +134,7 @@ int CChase::choice_function(const std::vector<DatalogAtom> &effect, const std::v
     }
     else {
         // otherwise, only minimize the distance to \bot
+        assert(max_idx != -1);
         return max_idx;
     }
 }
@@ -160,7 +161,7 @@ void CChase::check_and_add_disjunction(const DisjunctiveExistentialRule &rule, c
     // head contains multiple atoms, instantiation grounds all of them
 
     if (mode == SPLIT) { // U_2
-        for (int atom_idx = 0; atom_idx < rule.get_effect().size(); ++atom_idx) {
+        for (size_t atom_idx = 0; atom_idx < rule.get_effect().size(); ++atom_idx) {
             check_and_add_atom(rule, atom_idx, select(instantiation, atom_idx), true);
         }
     } else { // mode == CHOICE / U_3

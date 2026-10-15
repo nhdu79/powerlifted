@@ -98,7 +98,7 @@ std::vector<std::vector<int>> get_components(RuleBodyBase &body) {
             g.add_node(condition_counter);
         } else {
             g.add_node(condition_counter);
-            for (int j = condition_counter + 1; j < conditions.size(); ++j) {
+            for (size_t j = condition_counter + 1; j < conditions.size(); ++j) {
                 if (conditions[condition_counter].share_variables(conditions[j])) {
                     g.add_edge(condition_counter, j);
                     g.add_edge(j, condition_counter);
