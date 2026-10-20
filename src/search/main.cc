@@ -1,5 +1,5 @@
 #ifdef POWERLIFTED_USE_KONCLUDE
-#include "konclude_reasoner.h"
+#include "konclude/state_reasoner.h"
 #endif
 #include "options.h"
 #include "parser.h"
@@ -29,22 +29,12 @@ int main(int argc, char *argv[])
 
     Options opt(argc, argv);
 
-    // TODO(konclude): trivial wiring smoke test -- confirms the embedded
-    // Konclude reasoner links and its create/destroy round-trip doesn't
-    // crash or hang at startup. Replace with real ontology wiring once the
-    // embedded API is no longer stubbed (see EMBEDDED_LINKING_POWERLIFTED.md).
-    // Off unless --use-konclude is given, until Konclude is supported; make
-    // it the default then. Needs a build with Konclude (build.py --konclude).
+#ifndef POWERLIFTED_USE_KONCLUDE
     if (opt.use_konclude()) {
-#ifdef POWERLIFTED_USE_KONCLUDE
-        KoncludeReasoner konclude_smoke_test;
-        cout << "Konclude reasoner smoke test: "
-             << (konclude_smoke_test.ok() ? "OK" : "FAILED") << endl;
-#else
         cerr << "--use-konclude needs a build with Konclude (build.py --konclude)." << endl;
         exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
-#endif
     }
+#endif
 
     ifstream task_file(opt.get_filename());
     if (!task_file) {
@@ -75,6 +65,31 @@ int main(int argc, char *argv[])
         cout << "END-RULES" << endl;
         exit_with(utils::ExitCode::SUCCESS);
     }
+
+#ifdef POWERLIFTED_USE_KONCLUDE
+    // Off unless --use-konclude is given, until Konclude is supported; make
+    // it the default then. Loads the ontology the translator wrote into the
+    // Konclude worker and tells it the initial state; it lives as long as the
+    // search, which doesn't query it yet (TODO.md).
+    std::unique_ptr<KoncludeStateReasoner> konclude;
+    if (opt.use_konclude()) {
+        const TaskOntology &ontology = task.get_ontology();
+        if (ontology.path.empty()) {
+            cerr << "--use-konclude needs a task with an ontology, translated with "
+                    "--konclude-ontology-file." << endl;
+            exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+        }
+        konclude = std::make_unique<KoncludeStateReasoner>(
+            task, ontology.vocabulary, ontology.path, KONCLUDE_WORKER_PATH,
+            int(opt.get_konclude_restart_every()));
+        if (!konclude->set_state(task.get_initial_state())) {
+            cerr << "Konclude: " << konclude->last_error() << endl;
+            exit_with(utils::ExitCode::SEARCH_CRITICAL_ERROR);
+        }
+        cout << "Konclude: loaded " << ontology.path << ", told the initial state ("
+             << konclude->current_facts().size() << " facts)" << endl;
+    }
+#endif
 
     /*
       We check here that if the task has object creation effects, then the configuration

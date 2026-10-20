@@ -35,7 +35,11 @@ from owl import (  # noqa: E402
 from owl.ontology_normalizer.fresh_symbols import (  # noqa: E402
     fresh_complement_concept_for,
 )
-from owl.ontology_shifter import shift_o2_axiom, shift_ontology  # noqa: E402
+from owl.ontology_shifter import (  # noqa: E402
+    shift_o2_axiom,
+    shift_ontology,
+    shifted_complements,
+)
 
 A1 = AtomicConcept("http://ex/A1")
 A2 = AtomicConcept("http://ex/A2")
@@ -138,6 +142,45 @@ class ShiftOntologyTest(unittest.TestCase):
 
         self.assertEqual(result, original_axiom)
         self.assertIsNot(result, original_axiom)
+
+
+class ShiftedComplementsTest(unittest.TestCase):
+    def test_complements_of_conjuncts_and_disjuncts_of_m2_axioms_only(self):
+        # A1 ⊓ A2 ⊑ B1 ⊔ B2 is shifted, A1 ⊑ B3 (m=1) isn't.
+        ontology = Ontology(
+            iri="http://ex",
+            concepts={c.id: c for c in (A1, A2, B1, B2, B3)},
+            axioms=[
+                ConceptInclusion(IntersectionConcept((A1, A2)), UnionConcept((B1, B2))),
+                ConceptInclusion(A1, B3),
+            ],
+        )
+        normalize_ontology(ontology)
+
+        self.assertEqual(
+            shifted_complements(ontology),
+            {Ap1: A1, Ap2: A2, Bp1: B1, Bp2: B2},
+        )
+
+    def test_every_complement_shifting_introduces_is_listed(self):
+        ontology = Ontology(
+            iri="http://ex",
+            concepts={c.id: c for c in (A1, A2, B1, B2, B3)},
+            axioms=[
+                ConceptInclusion(IntersectionConcept((A1, A2)), UnionConcept((B1, B2, B3))),
+            ],
+        )
+        normalize_ontology(ontology)
+
+        complements = set(shifted_complements(ontology))
+        introduced = {
+            c
+            for ax in shift_ontology(ontology)
+            for side in (ax.sub, ax.sup)
+            for c in getattr(side, "operands", (side,))
+            if c.id.startswith("comp_")
+        }
+        self.assertEqual(introduced, complements)
 
 
 if __name__ == "__main__":

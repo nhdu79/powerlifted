@@ -130,6 +130,7 @@ def main():
                 options.ontology,
                 clipper_path=options.clipper,
                 verbose=options.verbose_data,
+                functional_ontology_path=options.konclude_ontology_file,
             )
 
     with timers.timing("Removing unused predicate symbols"):
@@ -161,11 +162,26 @@ def main():
         print_action_schemas(output, task, object_index, predicate_index, type_index)
 
     with timers.timing("Printing rules"):
-        for title, rules in (
-            ("LOWERBOUND-RULES", getattr(task, "lowerbound_rules", [])),
-            ("UPPERBOUND-RULES", getattr(task, "upperbound_rules", [])),
-        ):
-            print_rules(output, title, rules, object_index, predicate_index)
+        print_rules(
+            output,
+            "LOWERBOUND-RULES",
+            getattr(task, "lowerbound_rules", []),
+            object_index,
+            predicate_index,
+        )
+        print_complements(
+            output, getattr(task, "lowerbound_complements", []), predicate_index
+        )
+        print_rules(
+            output,
+            "UPPERBOUND-RULES",
+            getattr(task, "upperbound_rules", []),
+            object_index,
+            predicate_index,
+        )
+
+    with timers.timing("Printing ontology"):
+        print_ontology(output, getattr(task, "konclude_ontology", None), predicate_index)
 
     print("Total translation time:", timer.get_cpu_time())
 
@@ -353,6 +369,52 @@ def print_rules(output, title, rules, object_index, predicate_index):
                 " ".join(args_list),
                 file=output,
             )
+
+
+def print_complements(output, complements, predicate_index):
+    # The fresh complement concepts the lowerbound rules use (see
+    # ontology._kept_complements), always printed ("LOWERBOUND-COMPLEMENTS 0"
+    # without an ontology):
+    # - Canary and the number N of complements
+    # - N lines with the complement's name and index, then the name and
+    # index of the concept it complements
+    print("LOWERBOUND-COMPLEMENTS %d" % len(complements), file=output)
+    for complement, concept in complements:
+        print(
+            complement,
+            predicate_index[complement],
+            concept,
+            predicate_index[concept],
+            file=output,
+        )
+
+
+def print_ontology(output, konclude_ontology, predicate_index):
+    # The ontology for the search's Konclude reasoner (see
+    # ontology.write_functional_ontology): "ONTOLOGY 0" without one, else
+    # - "ONTOLOGY 1"
+    # - the path of the ontology file in OWL functional syntax, on a line of
+    # its own
+    # - the IRI prefix of the task's objects (an object's IRI is the prefix
+    # followed by its name)
+    # - "VOCABULARY" and the number N of predicates that are ontology classes
+    # (unary) or object properties (binary), followed by N lines with the
+    # predicate name, its index and its IRI
+    if konclude_ontology is None:
+        print("ONTOLOGY 0", file=output)
+        return
+    path, object_iri_prefix, predicate_iris = konclude_ontology
+    vocabulary = sorted(
+        (predicate_index[name], name, iri)
+        for name, iri in predicate_iris.items()
+        if name in predicate_index
+    )
+    print("ONTOLOGY 1", file=output)
+    print(path, file=output)
+    print(object_iri_prefix, file=output)
+    print("VOCABULARY %d" % len(vocabulary), file=output)
+    for index, name, iri in vocabulary:
+        print(name, index, iri, file=output)
 
 
 def print_goal(output, task, atom_index, object_index, predicate_index):

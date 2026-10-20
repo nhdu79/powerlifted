@@ -5,8 +5,6 @@ except ImportError:
     # Python 2.x
     from codecs import open as file_open
 
-import options
-
 from . import lisp_parser
 from . import parsing_functions
 
@@ -28,6 +26,10 @@ def parse_pddl_file(type, filename):
                          (type, filename, e))
 
 def open(domain_filename=None, task_filename=None):
+    # Imported here: options parses the command line when imported, which
+    # only translate.py's has.
+    import options
+
     task_filename = task_filename or options.task
     domain_filename = domain_filename or options.domain
 

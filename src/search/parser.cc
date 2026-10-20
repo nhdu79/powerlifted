@@ -10,6 +10,7 @@
 
 #include <cassert>
 #include <iostream>
+#include <unordered_map>
 #include <vector>
 
 using namespace std;
@@ -102,6 +103,16 @@ bool parse(Task &task, const ifstream &in)
     cout << "Total number of lowerbound rules: " << number_lowerbound_rules << endl;
     task.set_lowerbound_program(parse_rules(task, canary, number_lowerbound_rules));
 
+    int number_complements;
+    cin >> canary >> number_complements;
+    if (not is_next_section_correct(canary, "LOWERBOUND-COMPLEMENTS")) {
+        return false;
+    }
+    if (!parse_complements(task, number_complements)) {
+        return false;
+    }
+    cout << "Total number of lowerbound complements: " << number_complements << endl;
+
     int number_upperbound_rules;
     cin >> canary >> number_upperbound_rules;
     if (not is_next_section_correct(canary, "UPPERBOUND-RULES")) {
@@ -109,6 +120,20 @@ bool parse(Task &task, const ifstream &in)
     }
     cout << "Total number of upperbound rules: " << number_upperbound_rules << endl;
     task.set_upperbound_program(parse_rules(task, canary, number_upperbound_rules));
+
+    int has_ontology;
+    cin >> canary >> has_ontology;
+    if (not is_next_section_correct(canary, "ONTOLOGY")) {
+        return false;
+    }
+    if (has_ontology) {
+        if (!parse_ontology(task)) {
+            return false;
+        }
+        cout << "Ontology for Konclude: " << task.get_ontology().path << " ("
+             << task.get_ontology().vocabulary.predicate_iris.size()
+             << " predicates in its vocabulary)" << endl;
+    }
 
     if (number_mko_atoms > 0) {
         cerr << "Warning: the task has " << number_mko_atoms
@@ -373,6 +398,74 @@ int parse_goal(Task &task, int goal_size)
                                positive_nullary_mko_goals,
                                negative_nullary_mko_goals);
     return number_mko_atoms;
+}
+
+/*
+ * Each complement is a line
+ *   complement_name complement_index concept_name concept_index
+ * (see print_complements in the translator).
+ */
+bool parse_complements(Task &task, int number_complements)
+{
+    auto is_predicate = [&task](const string &name, int index) {
+        if (index >= 0 && index < int(task.predicates.size()) &&
+            task.predicates[index].get_name() == name) {
+            return true;
+        }
+        cerr << "Lowerbound complements: predicate " << name
+             << " doesn't have index " << index << endl;
+        return false;
+    };
+    unordered_map<int, int> complements;
+    for (int i = 0; i < number_complements; ++i) {
+        string complement_name, concept_name;
+        int complement, complemented;
+        cin >> complement_name >> complement >> concept_name >> complemented;
+        if (!cin) {
+            cerr << "Malformed LOWERBOUND-COMPLEMENTS section" << endl;
+            return false;
+        }
+        if (!is_predicate(complement_name, complement) ||
+            !is_predicate(concept_name, complemented)) {
+            return false;
+        }
+        complements[complement] = complemented;
+    }
+    task.set_lowerbound_complements(move(complements));
+    return true;
+}
+
+bool parse_ontology(Task &task)
+{
+    TaskOntology ontology;
+    // The path is a line of its own, as it may contain spaces.
+    cin >> ws;
+    getline(cin, ontology.path);
+    cin >> ontology.vocabulary.object_iri_prefix;
+    string canary;
+    int vocabulary_size;
+    cin >> canary >> vocabulary_size;
+    if (not is_next_section_correct(canary, "VOCABULARY")) {
+        return false;
+    }
+    for (int i = 0; i < vocabulary_size; ++i) {
+        string name, iri;
+        int index;
+        cin >> name >> index >> iri;
+        if (index < 0 || index >= int(task.predicates.size()) ||
+            task.predicates[index].get_name() != name) {
+            cerr << "Ontology vocabulary: predicate " << name << " doesn't have index "
+                 << index << endl;
+            return false;
+        }
+        ontology.vocabulary.predicate_iris[name] = iri;
+    }
+    if (!cin || ontology.path.empty()) {
+        cerr << "Malformed ONTOLOGY section" << endl;
+        return false;
+    }
+    task.set_ontology(move(ontology));
+    return true;
 }
 
 void parse_initial_state(Task &task, int initial_state_size)

@@ -21,18 +21,30 @@ it builds (optionally), runs the translator as a subprocess, then runs the
 search binary, and handles portfolios/iterations and plan validation.
 
 Currently on branch `wiring_konclude_to_powerlfited` / `ontology`: integrating
-a Konclude-based OWL/description-logic reasoner into the planner via an
-embedded shared library. See `EMBEDDED_LINKING_POWERLIFTED.md` for the
-step-by-step linking guide (this is developer documentation for the current
-in-progress work, not general project docs) and `src/search/konclude_reasoner.h`
-for the RAII wrapper around the embedded C API. Konclude is optional and off
-by default: `python build.py --konclude` (CMake `USE_KONCLUDE`, defining
-`POWERLIFTED_USE_KONCLUDE`) links it, and the search only uses it with
-`--use-konclude` (see `TODO.md`). `src/search/CMakeLists.txt` then
-hardcodes `KONCLUDE_REPO_ROOT` to a sibling checkout path (`../Konclude`) —
-override with `-DKONCLUDE_REPO_ROOT=...` if building on a machine with a
-different layout. `src/translator/ontology.py` is the Python
-entry point for ontology-related processing during translation.
+the Konclude description-logic reasoner into the planner. Konclude runs in a
+worker process (`konclude_worker`, from the Konclude checkout's
+`Tools/KoncludeWorker/`), restarted every N state changes because Konclude
+leaks memory per change; the search compiles only its client and links
+neither Konclude nor Qt. `src/search/konclude/state_reasoner.h`
+(`KoncludeStateReasoner`) keeps Konclude's ABox equal to a search state (by
+diffs) and answers mko queries. Konclude is optional and off by default:
+`python build.py --konclude` (CMake `USE_KONCLUDE`, defining
+`POWERLIFTED_USE_KONCLUDE`) builds with it, and the search only touches it
+with `--use-konclude`: it then loads the ontology into the worker and tells it
+the initial state (no queries yet; see `TODO.md`). The ontology reaches the
+search as a temporary OWL functional-syntax file: with `--use-konclude` (and
+`--ontology`), the driver creates it, the translator writes the normalized
+TBox to it (`--konclude-ontology-file`, `owl/functional_serializer.py`) and
+names it, with the predicate → IRI vocabulary, in the `.lifted` file's
+`ONTOLOGY` section, and the driver deletes it after planning (the worker
+reloads it on every restart, every `--konclude-restart-every` state changes).
+`src/search/CMakeLists.txt` looks for a Konclude checkout next to the
+powerlifted checkout (`../Konclude`, found from the CMake file's location)
+and fails if there is none — override with `-DKONCLUDE_REPO_ROOT=...` (and
+`-DKONCLUDE_WORKER=...` for the worker binary, default
+`<root>/konclude_worker`) on a machine with a different layout. Konclude's `docs/EMBEDDED_INTERFACE.md` §5 has the setup.
+`src/translator/ontology.py` is the Python entry point for ontology-related
+processing during translation.
 
 ## Build
 
@@ -50,7 +62,8 @@ pass `--build` to `powerlifted.py` to build before running.
 
 Two CMake targets are produced: `search` (the planner) and `datalog_test` (a
 standalone test binary for the Datalog engine, source at
-`src/search/datalog/datalog_test.cc`).
+`src/search/datalog/datalog_test.cc`). With `--konclude`, also `konclude_test`
+(`src/search/konclude/konclude_test.cc`, run by `dev/test-konclude.py`).
 
 Release builds compile with `-Werror`, so warnings fail the build. Debug
 builds compile with `-fsanitize=undefined -pg`.
@@ -80,6 +93,7 @@ python dev/run-tests.py               # full local suite
 python dev/run-tests.py --store-results dev/results.json     # save timing baseline
 python dev/run-tests.py --compare-results dev/results.json   # compare against baseline
 python dev/test-rule-parser.py        # search's parsing of LB/UB rules (needs Clipper)
+python dev/test-konclude.py           # KoncludeStateReasoner on the team task (build.py --konclude; needs Clipper)
 ```
 
 `dev/test-rule-parser.py` translates the ontology tasks, decodes the
@@ -173,9 +187,9 @@ the search component.
   sets, cartesian iterators, `kpkc.cc` — Bron-Kerbosch-based k-clique
   enumeration used by the clique successor generator).
 - `parallel_hashmap/`: vendored third-party dependency (phmap) — the pattern
-  to follow for other vendored deps (see the "Vendoring decision" note in
-  `EMBEDDED_LINKING_POWERLIFTED.md` for how the in-progress Konclude
-  integration is expected to eventually follow this same pattern).
+  to follow for other vendored deps (the Konclude worker client may follow
+  it once the integration is stable; for now it is compiled from the
+  Konclude checkout).
 - `main.cc`: search-binary entry point, ties parsing → heuristic/generator/
   search-engine factories → search execution → `plan_manager.cc` output.
 

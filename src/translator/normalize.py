@@ -298,8 +298,18 @@ def remove_universal_quantifiers(task):
 # (1) or(phi, or(psi, psi'))      ==  or(phi, psi, psi')
 # (2) exists(vars, or(phi, psi))  ==  or(exists(vars, phi), exists(vars, psi))
 # (3) and(phi, or(psi, psi'))     ==  or(and(phi, psi), and(phi, psi'))
+#
+# A disjunction never leaves an mko: [q1 or q2] (the certain answers of a
+# union) is not [q1] or [q2]. An mko's query is put into DNF on its own,
+# making it a union of conjunctive queries.
 def build_DNF(task):
     def recurse(condition):
+        if isinstance(condition, pddl.MinimalKnowledgeOperator):
+            return condition.change_parts(
+                [recurse(part).simplified() for part in condition.parts]
+            )
+        if not condition.parts:
+            return condition
         disjunctive_parts = []
         other_parts = []
         for part in condition.parts:
@@ -309,7 +319,8 @@ def build_DNF(task):
             else:
                 other_parts.append(part)
         if not disjunctive_parts:
-            return condition
+            # An mko among the parts may have changed.
+            return condition.change_parts(other_parts)
 
         # Rule (1): Associativity of disjunction.
         if isinstance(condition, pddl.Disjunction):
@@ -409,14 +420,15 @@ def move_existential_quantifiers(task):
         if isinstance(condition, pddl.Literal):
             return condition, False
 
+        # Only an mko's query (a union of conjunctive queries, see
+        # build_DNF) is still a disjunction here. Each disjunct keeps its
+        # own quantifier.
+        if isinstance(condition, pddl.Disjunction):
+            return pddl.Disjunction(existential_parts + other_parts), True
+
         assert isinstance(condition, pddl.MinimalKnowledgeOperator)
-        if not existential_parts:
-            return condition, False
-        else:
-            assert not other_parts
-            return pddl.MinimalKnowledgeOperator(
-                [existential_parts[0]], condition.negated
-            ), True
+        (part,) = existential_parts + other_parts
+        return pddl.MinimalKnowledgeOperator([part], condition.negated), True
 
     for proxy in all_conditions(task):
         if proxy.condition.has_existential_part():

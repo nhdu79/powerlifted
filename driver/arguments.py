@@ -105,8 +105,11 @@ def parse_options():
     parser.add_argument("--novelty-early-stop", action="store_true",
                         help="flag if the novelty evaluation of a state should stop as soon as the w-value is defined")
     parser.add_argument("--use-konclude", action="store_true",
-                        help="flag if the search should use the embedded Konclude reasoner (not supported yet; "
-                             "with --build, also links it)")
+                        help="flag if the search should use the Konclude reasoner (not supported yet; "
+                             "with --build, also builds with it)")
+    parser.add_argument("--konclude-restart-every", type=int, default=None,
+                        help="with --use-konclude, restart the Konclude worker every N state changes "
+                             "(0: never; default: the search's)")
     parser.add_argument("--unit-cost", action="store_true",
                            help="flag if the actions should be treated as unit-cost actions")
     parser.add_argument("--keep-translator-file", action="store_true",

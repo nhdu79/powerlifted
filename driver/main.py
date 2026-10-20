@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from build import PROJECT_ROOT, build
@@ -10,7 +11,7 @@ from build import PROJECT_ROOT, build
 from . import arguments, portfolio_runner
 from .preprocessor import preprocess_cpddl
 from .single_search_runner import run_single_search
-from .utils import get_elapsed_time, remove_temporary_files
+from .utils import remove_temporary_files, silent_remove
 
 
 def validate(domain_name, instance_name, planfile):
@@ -64,6 +65,8 @@ def run_translator(build_dir, options, extra):
         translator_args += ["--ontology", options.ontology]
     if options.clipper is not None:
         translator_args += ["--clipper", options.clipper]
+    if options.konclude_ontology_file is not None:
+        translator_args += ["--konclude-ontology-file", options.konclude_ontology_file]
     translator = subprocess.Popen(
         translator_args + ["--output-file", options.translator_file] + extra
     )
@@ -90,6 +93,11 @@ def set_extra_options(options):
         CPP_EXTRA_OPTIONS += ["--novelty-early-stop", str(1)]
     if options.use_konclude:
         CPP_EXTRA_OPTIONS.append("--use-konclude")
+    if options.konclude_restart_every is not None:
+        CPP_EXTRA_OPTIONS += [
+            "--konclude-restart-every",
+            str(options.konclude_restart_every),
+        ]
 
     # Checks if unit-cost flag is true
     if options.unit_cost:
@@ -118,10 +126,24 @@ def main():
 
     PYTHON_EXTRA_OPTIONS, CPP_EXTRA_OPTIONS = set_extra_options(options)
 
-    # Invoke the Python preprocessor
-    run_translator(build_dir, options, PYTHON_EXTRA_OPTIONS)
+    # The normalized ontology for the search's Konclude reasoner, which the
+    # translator writes: the Konclude worker reloads it whenever it restarts,
+    # so it may only go once planning is over.
+    options.konclude_ontology_file = None
+    if options.use_konclude and options.ontology is not None:
+        fd, options.konclude_ontology_file = tempfile.mkstemp(
+            prefix="powerlifted-ontology-", suffix=".ofn"
+        )
+        os.close(fd)
 
-    # Invoke the C++ search component
-    search_exit_code = run_search(build_dir, options, CPP_EXTRA_OPTIONS)
+    try:
+        # Invoke the Python preprocessor
+        run_translator(build_dir, options, PYTHON_EXTRA_OPTIONS)
+
+        # Invoke the C++ search component
+        search_exit_code = run_search(build_dir, options, CPP_EXTRA_OPTIONS)
+    finally:
+        if options.konclude_ontology_file is not None:
+            silent_remove(options.konclude_ontology_file)
 
     return search_exit_code

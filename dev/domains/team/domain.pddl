@@ -2,8 +2,9 @@
 ;
 ; Nothing in the problem says which objects are teams or players: that
 ; follows from the ontology only (hasCaptain/hasMember have domain Team and
-; range Player). A team recruits a player that is not known to be one of
-; its members already.
+; range Player). A team recruits a player. (Recruiting only players not
+; known to be members already would need (not (mko ...)), which the search
+; doesn't support yet.)
 (define (domain team)
 
   (:predicates
@@ -19,7 +20,6 @@
     :parameters (?t ?p)
     :precondition (and
       (mko (and (Team ?t) (Player ?p)))
-      (not (mko (hasMember ?t ?p)))
     )
     :effect (and
       (hasMember ?t ?p)

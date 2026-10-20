@@ -17,7 +17,9 @@ coherence update), and the ontology into upperbound rules:
    pddl.conditions.Literal), which the search evaluates w.r.t. the rules.
 
 Rules are kept as DisjunctiveExistentialRule objects on task.lowerbound_rules
-and task.upperbound_rules.
+and task.upperbound_rules; the fresh complement concepts the kept lowerbound
+rules use, paired with the concepts they complement, on
+task.lowerbound_complements.
 """
 
 import os
@@ -26,6 +28,12 @@ from pathlib import Path
 
 from normalize import all_conditions
 from owl import normalize_ontology, parse_owl
+from owl.functional_serializer import (
+    OBJECT_IRI_PREFIX,
+    serialize_functional,
+    vocabulary,
+)
+from owl.ontology_shifter import shifted_complements
 from pddl import Literal, MinimalKnowledgeOperator
 from queries import datalog
 from queries.names import (
@@ -140,9 +148,15 @@ def process_ontology(
     filter_irrelevant=True,
     verbose=False,
     debug=False,
+    functional_ontology_path=None,
 ):
     """Compile the ontology and the task's mkos into lowerbound rules, and
     the ontology into upperbound rules.
+
+    With functional_ontology_path, also writes the normalized ontology there
+    in OWL functional syntax, for the search's Konclude reasoner, and stores
+    on task.konclude_ontology what the .lifted file's ONTOLOGY section says
+    about it (see write_functional_ontology).
 
     Stores the rules on task.lowerbound_rules and task.upperbound_rules,
     declares the predicates they introduce in task.predicates, and replaces
@@ -156,7 +170,10 @@ def process_ontology(
 
     ontology = parse_owl(ontology_filepath)
     ontology_names = OntologyNames(ontology)
+    predicate_iris = vocabulary(task, ontology)
     normalize_ontology(ontology)
+    # Before the rule computations below, which needn't leave it alone.
+    normalized_axioms = list(ontology.axioms)
     # Before the mkos are replaced, so an "=" inside one counts too. Tells the
     # upperbound to add the equality axioms and UNA rules (which it also does
     # if the ontology has number restrictions or nominals). The lowerbound
@@ -166,9 +183,15 @@ def process_ontology(
     # it gets the UNA rules if any such rule is kept.
     task_uses_equality = _task_uses_equality(task)
     shifted_axioms = shifted_ontology_axioms(ontology)
+    complements = shifted_complements(ontology)
     ontology_names.add_generated(shifted_axioms)
     check_names(task, ontology_names)
     clipper_spelling = ClipperSpelling(pddl_predicate_names(task))
+    # {comp_P: P} in the task's spelling, the rules' spelling below.
+    complement_names = {
+        clipper_spelling.to_pddl(complement.id): clipper_spelling.to_pddl(concept.id)
+        for complement, concept in complements.items()
+    }
     # Before Clipper runs: compute_lowerbound_rules adds a warning to
     # ontology.warnings, which ensure_fully_supported would reject.
     upperbound_rules = compute_upperbound_rules(
@@ -205,16 +228,21 @@ def process_ontology(
     unreachable_rules, irrelevant_rules = [], []
     if filter_unreachable:
         lowerbound_rules, unreachable_rules = datalog.filter_unreachable_rules(
-            lowerbound_rules, _reachable_predicates(task)
+            lowerbound_rules, _reachable_predicates(task), complement_names
         )
     if filter_irrelevant:
         lowerbound_rules, irrelevant_rules = datalog.filter_irrelevant_rules(
-            lowerbound_rules, collector.queried_predicates, len(collector.ucqs)
+            lowerbound_rules,
+            collector.queried_predicates,
+            len(collector.ucqs),
+            complement_names,
         )
     # After the filters: only needed if a rule deriving "=" is kept.
     lowerbound_rules += datalog.lowerbound_una_rules(
         lowerbound_rules, [obj.name for obj in task.objects]
     )
+
+    lowerbound_complements = _kept_complements(lowerbound_rules, complement_names)
 
     new_predicate_declarations = datalog.predicate_declarations(
         lowerbound_rules + upperbound_rules, task.predicates
@@ -228,10 +256,25 @@ def process_ontology(
         if name not in declared_names:
             arity = len(ucq.free_variables())
             new_predicate_declarations.append(datalog.untyped_predicate(name, arity))
+    # A complemented concept no rule (nor the task) uses still needs an index.
+    declared_names |= {p.name for p in task.predicates}
+    for _, name in lowerbound_complements:
+        if name not in declared_names:
+            new_predicate_declarations.append(datalog.untyped_predicate(name, 1))
+            declared_names.add(name)
     task.predicates.extend(new_predicate_declarations)
     _apply_to_all_mkos(task, collector.replacement)
     task.lowerbound_rules = lowerbound_rules
     task.upperbound_rules = upperbound_rules
+    task.lowerbound_complements = lowerbound_complements
+    if functional_ontology_path is not None:
+        write_functional_ontology(
+            task,
+            ontology.iri,
+            normalized_axioms,
+            predicate_iris,
+            functional_ontology_path,
+        )
 
     if verbose:
         _print_compilation_information(
@@ -255,6 +298,40 @@ def process_ontology(
         print(f"Ontology warning: {warning}")
 
     return ontology
+
+
+def _kept_complements(rules, complements):
+    """[(complement, concept)], by complement name, for the complements
+    ({complement: concept}) that rules use."""
+    used = {atom.predicate for rule in rules for atom in rule.body + rule.effect}
+    return sorted(
+        (complement, concept)
+        for complement, concept in complements.items()
+        if complement in used
+    )
+
+
+def write_functional_ontology(task, iri, axioms, predicate_iris, path):
+    """Write the (normalized) axioms to path in OWL functional syntax, and
+    set task.konclude_ontology to (absolute path, object IRI prefix,
+    {predicate name: IRI})."""
+    text = serialize_functional(
+        axioms,
+        iri,
+        [obj.name for obj in task.objects],
+        declared_iris={
+            predicate_iris[p.name]: len(p.arguments)
+            for p in task.predicates
+            if p.name in predicate_iris
+        },
+    )
+    with open(path, "w") as f:
+        f.write(text)
+    task.konclude_ontology = (
+        os.path.abspath(path),
+        OBJECT_IRI_PREFIX,
+        predicate_iris,
+    )
 
 
 def _print_compilation_information(

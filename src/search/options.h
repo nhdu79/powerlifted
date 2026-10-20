@@ -18,6 +18,7 @@ class Options {
     bool full_novelty_check;
     bool novelty_early_stop;
     bool konclude;
+    unsigned konclude_restart_every;
     bool print_rules;
     unsigned seed;
 
@@ -35,8 +36,10 @@ class Options {
                      "(default: false)\n"
                   << "  --novelty-early-stop[=BOOL] Stop evaluating novelty early "
                      "(default: false)\n"
-                  << "  --use-konclude[=BOOL] Use the embedded Konclude reasoner "
+                  << "  --use-konclude[=BOOL] Use the Konclude reasoner "
                      "(default: false; not supported yet)\n"
+                  << "  --konclude-restart-every N Restart the Konclude worker every N "
+                     "state changes, 0: never (default: 100)\n"
                   << "  --print-rules[=BOOL] Print the parsed lowerbound and upperbound "
                      "rules and exit (default: false)\n";
     }
@@ -141,6 +144,7 @@ public:
           full_novelty_check(false),
           novelty_early_stop(false),
           konclude(false),
+          konclude_restart_every(100),
           print_rules(false),
           seed(1)
     {
@@ -187,6 +191,12 @@ public:
                          has_inline_value(arg, "--use-konclude")) {
                     konclude = take_bool_value(args, i, "--use-konclude");
                 }
+                else if (is_named_option(arg, "--konclude-restart-every") ||
+                         has_inline_value(arg, "--konclude-restart-every")) {
+                    konclude_restart_every = parse_unsigned_value(
+                        take_required_value(args, i, "--konclude-restart-every"),
+                        "--konclude-restart-every");
+                }
                 else if (is_named_option(arg, "--print-rules") ||
                          has_inline_value(arg, "--print-rules")) {
                     print_rules = take_bool_value(args, i, "--print-rules");
@@ -223,6 +233,8 @@ public:
     bool get_novelty_early_stop() const { return novelty_early_stop; }
 
     bool use_konclude() const { return konclude; }
+
+    unsigned get_konclude_restart_every() const { return konclude_restart_every; }
 
     bool get_print_rules() const { return print_rules; }
 

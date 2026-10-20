@@ -12,11 +12,39 @@
 #include <ostream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace datalog {
 class DisjunctiveExistentialProgram;
 }
+
+/**
+ * @brief Which task predicates are ontology classes and properties, and the
+ * IRIs the ontology (and Konclude) knows them and the task's objects by.
+ *
+ * @details Unary predicates are classes, binary ones object properties; the
+ * others (translator-generated ones like type@object, QUERY<i>, "=") aren't
+ * listed.
+ */
+struct OntologyVocabulary {
+    // Task predicate name -> IRI of its ontology class or object property.
+    std::unordered_map<std::string, std::string> predicate_iris;
+    // An object's IRI is object_iri_prefix + its name.
+    std::string object_iri_prefix;
+};
+
+/**
+ * @brief The ontology for the Konclude reasoner, as the translator wrote it
+ * (the .lifted file's ONTOLOGY section): the normalized ontology in OWL
+ * functional syntax at path, which must exist until the search ends (the
+ * Konclude worker reloads it on every restart). path is empty if the
+ * translator wrote none (no ontology, or no --konclude-ontology-file).
+ */
+struct TaskOntology {
+    std::string path;
+    OntologyVocabulary vocabulary;
+};
 
 /**
  * @brief Represents the task, with all its objects, goals, action schemas, etc.
@@ -38,6 +66,11 @@ class Task {
     // (Table 1 rules, equality axioms and UNA rules).
     std::unique_ptr<datalog::DisjunctiveExistentialProgram> lowerbound_program;
     std::unique_ptr<datalog::DisjunctiveExistentialProgram> upperbound_program;
+    // Complement predicate index -> index of the predicate it complements:
+    // the fresh complement concepts the lowerbound rules use (empty without
+    // an ontology).
+    std::unordered_map<int, int> lowerbound_complements;
+    TaskOntology ontology;
 
 public:
     std::vector<Predicate> predicates;
@@ -112,6 +145,18 @@ public:
         assert(upperbound_program);
         return *upperbound_program;
     }
+
+    void set_lowerbound_complements(std::unordered_map<int, int> complements) {
+        lowerbound_complements = std::move(complements);
+    }
+
+    const std::unordered_map<int, int> &get_lowerbound_complements() const {
+        return lowerbound_complements;
+    }
+
+    void set_ontology(TaskOntology o) { ontology = std::move(o); }
+
+    const TaskOntology &get_ontology() const { return ontology; }
 
     bool is_goal(const DBState &state) const;
 

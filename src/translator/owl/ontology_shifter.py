@@ -82,6 +82,19 @@ def shift_o2_axiom(ax: ConceptInclusion) -> list[ConceptInclusion]:
     return shifted
 
 
+def shifted_complements(ontology: Ontology) -> dict[AtomicConcept, AtomicConcept]:
+    """{B': B} for every fresh complement concept B' that shift_ontology
+    introduces, i.e. for every conjunct and disjunct B of an O2 axiom with
+    m>=2 disjuncts. Covers normalization's complements too: each comes
+    with ⊤ ⊑ B ⊔ B' (O2), whose shifting introduces B' again for B."""
+    return {
+        fresh_complement_concept_for(concept): concept
+        for ax in ontology.axiom_types.get(O2, ())
+        if len(_disjuncts(ax.sup)) >= 2
+        for concept in _conjuncts(ax.sub) + _disjuncts(ax.sup)
+    }
+
+
 def shift_ontology(ontology: Ontology) -> list[ConceptInclusion]:
     """shift(Σ) over every one of Σ's O2 axioms — m>=2 ones shifted,
     m=1 ones passed through unchanged (see shift_o2_axiom). Operates on

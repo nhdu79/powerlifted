@@ -2,26 +2,42 @@ cmake_minimum_required(VERSION 3.14)
 project(search LANGUAGES CXX)
 
 
-# --- Konclude embedded reasoner (optional) ---
+# --- Konclude reasoner (optional) ---
 # Off by default until Konclude is supported (see TODO.md); build.py --konclude
-# turns it on.
-option(USE_KONCLUDE "Link the embedded Konclude reasoner" OFF)
+# turns it on. Konclude runs in a worker process (konclude_worker, from
+# Konclude's Tools/KoncludeWorker/); the search only compiles the client, so it
+# links neither libKonclude nor Qt.
+option(USE_KONCLUDE "Use the Konclude reasoner (through its worker process)" OFF)
 
 if (USE_KONCLUDE)
-    set(KONCLUDE_REPO_ROOT "/home/zinzin2312/repos/Konclude" CACHE PATH
-        "Path to a Konclude checkout built with KoncludeEmbedded.pro (see docs/EMBEDDED_LINKING_POWERLIFTED.md in that repo)")
-    set(KONCLUDE_LIBRARY "${KONCLUDE_REPO_ROOT}/ReleaseEmbedded/libKonclude.so.1.0.0")
-    if (NOT EXISTS "${KONCLUDE_LIBRARY}")
-        message(FATAL_ERROR "USE_KONCLUDE is ON but ${KONCLUDE_LIBRARY} doesn't exist "
-                            "(set -DKONCLUDE_REPO_ROOT=..., or build without Konclude)")
+    # Default: a Konclude checkout next to this repository (../Konclude
+    # relative to the powerlifted checkout), found from this file's location.
+    get_filename_component(KONCLUDE_SIBLING_ROOT
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../Konclude" ABSOLUTE)
+    set(KONCLUDE_REPO_ROOT "" CACHE PATH
+        "Path to a Konclude checkout with a built konclude_worker (Tools/KoncludeWorker/README.md there; default: ${KONCLUDE_SIBLING_ROOT})")
+    if (NOT KONCLUDE_REPO_ROOT)
+        if (NOT EXISTS "${KONCLUDE_SIBLING_ROOT}/Tools/KoncludeWorker")
+            message(FATAL_ERROR "USE_KONCLUDE is ON but there is no Konclude checkout at "
+                                "${KONCLUDE_SIBLING_ROOT} (set -DKONCLUDE_REPO_ROOT=..., "
+                                "or build without Konclude)")
+        endif()
+        set(KONCLUDE_REPO_ROOT "${KONCLUDE_SIBLING_ROOT}")
     endif()
-    message(STATUS "Linking Konclude: ${KONCLUDE_LIBRARY}")
-
-    add_library(Konclude SHARED IMPORTED)
-    set_target_properties(Konclude PROPERTIES
-        IMPORTED_LOCATION "${KONCLUDE_LIBRARY}"
-        INTERFACE_INCLUDE_DIRECTORIES "${KONCLUDE_REPO_ROOT}/Source/Control/Interface/Embedded"
-    )
+    message(STATUS "Konclude checkout: ${KONCLUDE_REPO_ROOT}")
+    set(KONCLUDE_WORKER_DIR "${KONCLUDE_REPO_ROOT}/Tools/KoncludeWorker")
+    # Empty: the checkout's, so it follows KONCLUDE_REPO_ROOT.
+    set(KONCLUDE_WORKER "" CACHE FILEPATH
+        "The konclude_worker executable (default for KoncludeStateReasoner; default: KONCLUDE_REPO_ROOT/konclude_worker)")
+    if (NOT KONCLUDE_WORKER)
+        set(KONCLUDE_WORKER "${KONCLUDE_REPO_ROOT}/konclude_worker")
+    endif()
+    if (NOT EXISTS "${KONCLUDE_WORKER}")
+        message(FATAL_ERROR "USE_KONCLUDE is ON but ${KONCLUDE_WORKER} doesn't exist "
+                            "(build it with Tools/KoncludeWorker/build.sh in ${KONCLUDE_REPO_ROOT}, "
+                            "set -DKONCLUDE_REPO_ROOT=..., or build without Konclude)")
+    endif()
+    message(STATUS "Konclude worker: ${KONCLUDE_WORKER}")
 endif()
 
 # --- ccache support ---
@@ -110,6 +126,9 @@ set(SUCCESSOR_GENERATOR_SOURCES
         successor_generators/successor_generator_factory.cc
         successor_generators/yannakakis.cc)
 
+set(KONCLUDE_SOURCES
+        konclude/state_reasoner.cc)
+
 set(UTIL_SOURCES
         utils/logging.cc
         utils/system.cc
@@ -168,12 +187,32 @@ target_link_libraries(search PRIVATE project_options)
 target_link_libraries(datalog_test PRIVATE project_options)
 target_link_libraries(c_chase_test PRIVATE project_options)
 if (USE_KONCLUDE)
-    target_link_libraries(search PRIVATE Konclude)
-    target_compile_definitions(search PRIVATE POWERLIFTED_USE_KONCLUDE)
-    set_target_properties(search PROPERTIES
-        BUILD_RPATH "${KONCLUDE_REPO_ROOT}/ReleaseEmbedded"
-        INSTALL_RPATH "${KONCLUDE_REPO_ROOT}/ReleaseEmbedded"
-    )
+    # The worker client and the state reasoner, shared by search and
+    # konclude_test.
+    add_library(konclude_client STATIC
+            "${KONCLUDE_WORKER_DIR}/konclude_worker_client.cpp"
+            ${KONCLUDE_SOURCES})
+    target_include_directories(konclude_client PUBLIC
+            "${KONCLUDE_REPO_ROOT}/Source/Control/Interface/Embedded"
+            "${KONCLUDE_WORKER_DIR}")
+    target_compile_definitions(konclude_client PUBLIC
+            POWERLIFTED_USE_KONCLUDE
+            KONCLUDE_WORKER_PATH="${KONCLUDE_WORKER}")
+    target_link_libraries(konclude_client PRIVATE project_options)
+    target_link_libraries(search PRIVATE konclude_client)
+
+    # Runs KoncludeStateReasoner on the team task (dev/test-konclude.py).
+    add_executable(konclude_test
+            konclude/konclude_test.cc
+            parser.cc
+            ${CORE_SOURCES}
+            ${DATALOG_SOURCES}
+            ${STATE_SOURCES}
+            ${UTIL_SOURCES})
+    set_target_properties(konclude_test PROPERTIES
+            CXX_STANDARD_REQUIRED ON
+            CXX_EXTENSIONS OFF)
+    target_link_libraries(konclude_test PRIVATE project_options konclude_client)
 endif()
 
 

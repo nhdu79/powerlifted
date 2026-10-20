@@ -25,8 +25,9 @@ def parse_options():
     parser.add_argument(
         "--konclude",
         action="store_true",
-        help="Link the embedded Konclude reasoner (needs a Konclude checkout, "
-        "see EMBEDDED_LINKING_POWERLIFTED.md).",
+        help="Build with the Konclude reasoner, which runs in a worker process "
+        "(needs a Konclude checkout with a built konclude_worker, see "
+        "Tools/KoncludeWorker/README.md there).",
     )
     return parser.parse_args()
 

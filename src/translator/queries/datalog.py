@@ -113,15 +113,17 @@ def _positive_body_predicates(rule):
     }
 
 
-def filter_unreachable_rules(rules, reachable_predicates):
+def filter_unreachable_rules(rules, reachable_predicates, complements=()):
     """Keep the rules that can fire: seeded with reachable_predicates (the
-    predicates of the initial state and of action effects), a rule is
-    reachable once all its positive body predicates are, and then so are
-    its effect predicates.
+    predicates of the initial state and of action effects) and complements
+    (the complement predicates: comp_P(x) reads ¬P(x), which holds wherever
+    P(x) isn't derived, so from the start), a rule is reachable once all
+    its positive body predicates are, and then so are its effect
+    predicates.
 
     Returns (reachable_rules, unreachable_rules), both in input order.
     """
-    reachable = set(reachable_predicates)
+    reachable = set(reachable_predicates) | set(complements)
     kept = set()
     changed = True
     while changed:
@@ -137,7 +139,7 @@ def filter_unreachable_rules(rules, reachable_predicates):
     )
 
 
-def filter_irrelevant_rules(rules, queried_predicates, num_ucqs):
+def filter_irrelevant_rules(rules, queried_predicates, num_ucqs, complements=None):
     """Remove rules whose effects cannot contribute to anything the compiled
     task reads.
 
@@ -145,10 +147,12 @@ def filter_irrelevant_rules(rules, queried_predicates, num_ucqs):
     denial (empty effect, i.e. bottom) is always relevant, as it's what
     detects inconsistency, and so is a rule deriving "=" (a denial under UNA,
     see move_inequalities_to_effect). The body predicates of relevant rules
-    become needed in turn.
+    become needed in turn, and so does P for a needed complement predicate
+    comp_P (complements: {comp_P: P}), as comp_P(x) reads ¬P(x).
 
     Returns (relevant_rules, irrelevant_rules), both in input order.
     """
+    complements = complements or {}
     needed = set(queried_predicates)
     needed |= {query_predicate_name(i) for i in range(num_ucqs)}
 
@@ -165,10 +169,11 @@ def filter_irrelevant_rules(rules, queried_predicates, num_ucqs):
         for rule in rules:
             if not is_relevant(rule):
                 continue
-            for name in _positive_body_predicates(rule):
-                if name not in needed:
-                    needed.add(name)
-                    changed = True
+            for body_name in _positive_body_predicates(rule):
+                for name in (body_name, complements.get(body_name)):
+                    if name is not None and name not in needed:
+                        needed.add(name)
+                        changed = True
 
     relevant, irrelevant = [], []
     for rule in rules:
