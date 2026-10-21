@@ -2,8 +2,8 @@
 
 - [x] Remove negation in `DatalogAtom` (not supported!)
 - [x] Remove inequality in LB rules!
-- [ ] Vocab for query0 (mkos)
 - [x] Mapping between negated predicate and predicate (in LB) for UB
+- Correctness ISSUE! Ask Andreas!
 
 ### Later
 - [x] Konnect Konclude
@@ -29,6 +29,7 @@ worker is a separate process; the previous in-process library took 75 MB,
   every restart). The search loads it and tells the initial state.
 - [ ] Translator: each mko's query as one SPARQL SELECT per connected
   component.
+    - Vocab for query0 (mkos) for Konclude!
 - [ ] Search: call `set_state` and `entailed` for an mko whose lowerbound and
   upperbound answers differ; consider caching answers per state.
 - [ ] Konclude misses `Captain(alice)` on the team ontology, and hangs on a
