@@ -180,8 +180,15 @@ def main():
             predicate_index,
         )
 
+    with timers.timing("Translating mko atoms into SPARQL", block=True):
+        # After print_action_schemas, which puts the actions in their order.
+        konclude_queries = ontology.konclude_queries(task)
+
     with timers.timing("Printing ontology"):
         print_ontology(output, getattr(task, "konclude_ontology", None), predicate_index)
+        print_konclude_queries(
+            output, konclude_queries, object_index, predicate_index
+        )
 
     print("Total translation time:", timer.get_cpu_time())
 
@@ -221,7 +228,7 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
     # constant and 'p' if it is a parameter. In the case it is a constant, 'i'
     # is its object index; otherwise it is the parameter index
     #    - mko flag: 1 if the atom stands for an mko, i.e. is evaluated
-    # w.r.t. the lowerbound rules, 0 if it is evaluated on the state
+    # w.r.t. the LB/UB rules, 0 if it is evaluated on the state
     # - Next, we output similar information for the effects
     #    - predicate name
     #    - predicate index
@@ -415,6 +422,64 @@ def print_ontology(output, konclude_ontology, predicate_index):
     print("VOCABULARY %d" % len(vocabulary), file=output)
     for index, name, iri in vocabulary:
         print(name, index, iri, file=output)
+
+
+def print_konclude_queries(output, mkos, object_index, predicate_index):
+    # The SPARQL query of each mko of the action preconditions and the goal
+    # (an atom flagged mko), translated once, for the search's Konclude
+    # reasoner (see ontology.konclude_queries and queries.sparql), always
+    # printed ("KONCLUDE-QUERIES 0" without an ontology; with one, also
+    # without an ONTOLOGY section, i.e. without --konclude-ontology-file).
+    # An mko without a translation isn't listed.
+    # - Canary and the number N of queries
+    # - Per query, a line with either
+    #    - "KONCLUDE-QUERY", the name and index of a QUERY<i> predicate, and
+    # its arity: the query of every QUERY<i> atom, whose argument j is the
+    # answer variable x<j>
+    #    - or "KONCLUDE-MKO" and an atom, as an action precondition: predicate
+    # name and index, number of arguments, then pairs (O, i): O is 'c' for a
+    # constant (i: its object index), 'p' for a variable (i: its number, by
+    # first occurrence). The query of every atom flagged mko that is the same
+    # up to the names of its variables; its variable i is the answer variable
+    # x<i>
+    #  followed by
+    #    - the number K of answer variables, then the K answer variables
+    # (without "?")
+    #    - the number D of its conjunctive queries (its answers are the union
+    # of theirs)
+    # - Per conjunctive query, a line with the number C of its connected
+    # components (its answers are the product of theirs), then C lines, each a
+    # SPARQL query of one component: a SELECT of its answer variables, or an
+    # ASK if it has none (it keeps the product if entailed, empties it
+    # otherwise)
+    entries = []
+    if mkos is not None:
+        for name, query in mkos.query_entries():
+            arity = len(query[0])
+            entries.append(
+                ([ontology.KONCLUDE_QUERY, name, predicate_index[name], arity], query)
+            )
+        for (predicate, args), query in mkos.mko_entries():
+            args_list = []
+            for x in args:
+                if is_variable(x):
+                    args_list += ["p", x[len("?x"):]]
+                else:
+                    args_list += ["c", str(object_index[x])]
+            entries.append(
+                (
+                    [ontology.KONCLUDE_MKO, predicate, predicate_index[predicate], len(args)]
+                    + args_list,
+                    query,
+                )
+            )
+    print("KONCLUDE-QUERIES %d" % len(entries), file=output)
+    for head, (variables, cqs) in entries:
+        print(*head, len(variables), *variables, len(cqs), file=output)
+        for components in cqs:
+            print(len(components), file=output)
+            for sparql in components:
+                print(sparql, file=output)
 
 
 def print_goal(output, task, atom_index, object_index, predicate_index):

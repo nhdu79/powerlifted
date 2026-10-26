@@ -157,6 +157,13 @@ bool KoncludeStateReasoner::answer_component(const string &sparql,
     if (!client.query(sparql)) {
         return fail(string("query failed: ") + client.lastError());
     }
+    if (client.resultBoolean() >= 0) {
+        // An ASK: no variables, and the empty row if entailed.
+        if (client.resultBoolean() == 1) {
+            rows.emplace_back();
+        }
+        return true;
+    }
     for (int i = 0; i < client.resultVariableCount(); ++i) {
         variables.push_back(client.resultVariableName(i));
     }

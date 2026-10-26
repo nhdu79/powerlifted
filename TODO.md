@@ -27,14 +27,26 @@ worker is a separate process; the previous in-process library took 75 MB,
   `ONTOLOGY` section names both). The driver makes it a temporary file with
   `--use-konclude` and deletes it after planning (the worker reloads it on
   every restart). The search loads it and tells the initial state.
-- [ ] Translator: each mko's query as one SPARQL SELECT per connected
-  component.
-    - Vocab for query0 (mkos) for Konclude!
+- [x] Translator: each mko (an atom flagged mko, in a precondition or the
+  goal) as a SPARQL query, one SELECT per connected component, translated
+  once: `MkoQueries` (`src/translator/queries/sparql.py`) keeps the known
+  mkos, a QUERY<i> by its name (any arguments), any other by its atom up to
+  its variables' names. In the `.lifted` file's `KONCLUDE-QUERIES` section
+  (`TaskOntology::query_predicate_queries` and `mko_queries` in the search),
+  whenever there is an ontology (also without `--use-konclude`). Not
+  translated (reported by the translator): mkos reading a predicate that
+  isn't an ontology class/property. Existential variables are blank nodes
+  (`_:y<n>`): Konclude binds every `?variable` to a named individual. A
+  component without answer variables (e.g. a ground mko) is an ASK.
 - [ ] Search: call `set_state` and `entailed` for an mko whose lowerbound and
   upperbound answers differ; consider caching answers per state.
 - [ ] Konclude misses `Captain(alice)` on the team ontology, and hangs on a
   smaller variant (max cardinality; Konclude's
   `docs/INCREMENTAL_REASONING.md` §4). The worker client has no timeout yet.
+  Also hangs ("the Konclude worker is not responding") on the team goal's
+  `SELECT ?c0 WHERE { ?y0 a :Team . ?y0 :hasMember ?c0 . }` after
+  (transfer blue red star), with ?y0 a variable; as the blank node `_:y0`,
+  which the translator writes, it answers.
 - [ ] Once Konclude is supported, make it the default: `USE_KONCLUDE` ON in
   `src/search/CMakeLists.txt` and `build.py`, `konclude(false)` → `true` in
   `src/search/options.h`.

@@ -69,11 +69,12 @@ def entity_iri(entity):
     return FRESH_IRI_PREFIX + entity.id
 
 
-def vocabulary(task, ontology):
-    """{task predicate name: IRI} for every unary/binary task predicate that
-    is a class/object property of ontology (straight out of owl.parse_owl),
-    i.e. has the same normalized name and arity — the same correspondence
-    the compiled rules use (queries.names)."""
+def vocabulary(arities, ontology):
+    """{predicate name: IRI} for every unary/binary predicate of arities
+    ({name: arity}, e.g. the task's) that is a class/object property of
+    ontology (straight out of owl.parse_owl), i.e. has the same normalized
+    name and arity — the same correspondence the compiled rules use
+    (queries.names)."""
     entities = {}
     for expr, arity in [(c, 1) for c in ontology.atomic_concepts.values()] + [
         (r, 2) for r in ontology.atomic_roles.values()
@@ -82,10 +83,10 @@ def vocabulary(task, ontology):
             continue
         entities[expr.id] = (entity_iri(expr), arity)
     result = {}
-    for predicate in task.predicates:
-        entry = entities.get(parse_name(predicate.name))
-        if entry is not None and entry[1] == len(predicate.arguments):
-            result[predicate.name] = entry[0]
+    for name, arity in arities.items():
+        entry = entities.get(parse_name(name))
+        if entry is not None and entry[1] == arity:
+            result[name] = entry[0]
     return result
 
 

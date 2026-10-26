@@ -35,6 +35,39 @@ struct OntologyVocabulary {
 };
 
 /**
+ * @brief A conjunctive query for Konclude, as one SPARQL SELECT or ASK (one
+ * basic graph pattern) per connected component.
+ *
+ * @details Konclude answers only the first component of a disconnected
+ * pattern (e.g. { ?t a :Team . ?p a :Player }), leaving the other variables
+ * unbound. So each component is its own query, and the answers are their
+ * product. Each component selects the variables of it that are answer
+ * variables, or is an ASK if it has none.
+ */
+struct KoncludeQuery {
+    // An ASK component selects no variable: it only filters (the product
+    // keeps its answers if it is entailed, and is empty otherwise).
+    std::vector<std::string> components;
+    // The answer variables (without "?"), in the order of the answer tuples;
+    // each selected by exactly one component.
+    std::vector<std::string> answer_variables;
+};
+
+/**
+ * @brief The SPARQL query of an atomic mko, i.e. of an atom flagged mko, up to
+ * the names of its variables: preconditions (and goal atoms) with the same
+ * predicate and arguments, variables numbered by first occurrence, share it.
+ */
+struct KoncludeMkoQuery {
+    int predicate;
+    // Constants (object indices) and variables (numbered 0, 1, ... by first
+    // occurrence); variable i is the answer variable x<i>.
+    std::vector<Argument> arguments;
+    // Conjunctive queries whose answers' union are the mko's (one, for now).
+    std::vector<KoncludeQuery> cqs;
+};
+
+/**
  * @brief The ontology for the Konclude reasoner, as the translator wrote it
  * (the .lifted file's ONTOLOGY section): the normalized ontology in OWL
  * functional syntax at path, which must exist until the search ends (the
@@ -44,6 +77,15 @@ struct OntologyVocabulary {
 struct TaskOntology {
     std::string path;
     OntologyVocabulary vocabulary;
+    // The SPARQL query of each mko (an atom flagged mko) of the action
+    // preconditions and the goal, translated once (the KONCLUDE-QUERIES
+    // section, written for every task with an ontology, even when path is
+    // empty); an mko without a translation isn't listed. QUERY<i> atoms, by
+    // the predicate index of their QUERY<i>: its conjunctive queries, whose
+    // answers' union are the query's, answer variable x<j> its argument j.
+    std::unordered_map<int, std::vector<KoncludeQuery>> query_predicate_queries;
+    // The other atoms flagged mko.
+    std::vector<KoncludeMkoQuery> mko_queries;
 };
 
 /**

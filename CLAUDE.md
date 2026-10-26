@@ -38,6 +38,13 @@ TBox to it (`--konclude-ontology-file`, `owl/functional_serializer.py`) and
 names it, with the predicate → IRI vocabulary, in the `.lifted` file's
 `ONTOLOGY` section, and the driver deletes it after planning (the worker
 reloads it on every restart, every `--konclude-restart-every` state changes).
+Whenever there is an ontology (with `--use-konclude` or not), the
+translator also writes each mko (an atom flagged mko) as a SPARQL query,
+translated once and shared by every precondition and the goal
+(`queries/sparql.py`, `MkoQueries`: a QUERY<i> by name, any other mko by its
+atom up to variable names), to the `KONCLUDE-QUERIES` section, which the
+search reads into `TaskOntology::query_predicate_queries`/`mko_queries` for
+`KoncludeStateReasoner::answer`.
 `src/search/CMakeLists.txt` looks for a Konclude checkout next to the
 powerlifted checkout (`../Konclude`, found from the CMake file's location)
 and fails if there is none — override with `-DKONCLUDE_REPO_ROOT=...` (and

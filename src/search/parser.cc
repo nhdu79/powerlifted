@@ -135,6 +135,20 @@ bool parse(Task &task, const ifstream &in)
              << " predicates in its vocabulary)" << endl;
     }
 
+    int number_konclude_queries;
+    cin >> canary >> number_konclude_queries;
+    if (not is_next_section_correct(canary, "KONCLUDE-QUERIES")) {
+        return false;
+    }
+    // Written for every task with an ontology, also without an ONTOLOGY
+    // section (i.e. without --use-konclude).
+    if (!parse_konclude_queries(task, number_konclude_queries)) {
+        return false;
+    }
+    if (number_konclude_queries > 0) {
+        cout << "Mko queries in SPARQL for Konclude: " << number_konclude_queries << endl;
+    }
+
     if (number_mko_atoms > 0) {
         cerr << "Warning: the task has " << number_mko_atoms
              << " mko atoms, which the search does not evaluate w.r.t. the "
@@ -463,6 +477,78 @@ bool parse_ontology(Task &task)
     if (!cin || ontology.path.empty()) {
         cerr << "Malformed ONTOLOGY section" << endl;
         return false;
+    }
+    task.set_ontology(move(ontology));
+    return true;
+}
+
+bool parse_konclude_queries(Task &task, int number_queries)
+{
+    TaskOntology ontology = task.get_ontology();
+    for (int i = 0; i < number_queries; ++i) {
+        string canary, name;
+        KoncludeMkoQuery mko;
+        int arity, number_answer_variables, number_cqs;
+        cin >> canary >> name >> mko.predicate >> arity;
+        bool is_query = canary == "KONCLUDE-QUERY";
+        if (!cin || !(is_query || canary == "KONCLUDE-MKO") || mko.predicate < 0 ||
+            mko.predicate >= int(task.predicates.size()) ||
+            task.predicates[mko.predicate].get_name() != name ||
+            task.predicates[mko.predicate].getArity() != arity ||
+            (is_query && ontology.query_predicate_queries.count(mko.predicate))) {
+            cerr << "Konclude queries: expected KONCLUDE-QUERY or KONCLUDE-MKO and a "
+                    "predicate, got "
+                 << canary << " " << name << " " << mko.predicate << endl;
+            return false;
+        }
+        // A KONCLUDE-QUERY entry has no atom: it is any QUERY<i> atom's.
+        for (int j = 0; !is_query && j < arity; ++j) {
+            char kind;
+            int index;
+            cin >> kind >> index;
+            bool constant = kind == 'c';
+            if (!cin || (kind != 'c' && kind != 'p') || index < 0 ||
+                (constant && index >= int(task.objects.size()))) {
+                cerr << "Konclude queries: malformed argument of " << name << endl;
+                return false;
+            }
+            mko.arguments.emplace_back(index, constant, false);
+        }
+        cin >> number_answer_variables;
+        vector<string> answer_variables(max(number_answer_variables, 0));
+        for (string &variable : answer_variables) {
+            cin >> variable;
+        }
+        cin >> number_cqs;
+        if (!cin || number_cqs <= 0) {
+            cerr << "Malformed KONCLUDE-QUERIES section at " << name << endl;
+            return false;
+        }
+        mko.cqs.resize(number_cqs);
+        for (KoncludeQuery &cq : mko.cqs) {
+            int number_components;
+            cin >> number_components;
+            if (!cin || number_components <= 0) {
+                cerr << "Malformed KONCLUDE-QUERIES section at " << name << endl;
+                return false;
+            }
+            cq.components.resize(number_components);
+            // Each SPARQL query is a line of its own.
+            for (string &component : cq.components) {
+                cin >> ws;
+                getline(cin, component);
+            }
+            cq.answer_variables = answer_variables;
+        }
+        if (!cin) {
+            cerr << "Malformed KONCLUDE-QUERIES section at " << name << endl;
+            return false;
+        }
+        if (is_query) {
+            ontology.query_predicate_queries[mko.predicate] = move(mko.cqs);
+        } else {
+            ontology.mko_queries.push_back(move(mko));
+        }
     }
     task.set_ontology(move(ontology));
     return true;

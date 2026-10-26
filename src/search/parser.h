@@ -34,6 +34,9 @@ bool parse_complements(Task &task, int number_complements);
 // Reads the ONTOLOGY section after its canary and "1" (see print_ontology
 // in the translator).
 bool parse_ontology(Task &task);
+// Reads number_queries queries of the KONCLUDE-QUERIES section (after its
+// canary; see print_konclude_queries in the translator).
+bool parse_konclude_queries(Task &task, int number_queries);
 // Reads number_rules rules (after the section's canary) into a program over
 // the task's predicates and objects.
 std::unique_ptr<datalog::DisjunctiveExistentialProgram>

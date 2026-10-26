@@ -58,6 +58,45 @@ int predicate_index(const Task &task, const string &name) {
     exit(2);
 }
 
+// The translated query of the mko predicate(arguments), arguments object names
+// or variables "?0", "?1", ... (numbered by first occurrence); null if none.
+const KoncludeQuery *mko_query(const Task &task, const string &predicate,
+                               const vector<string> &arguments) {
+    for (const KoncludeMkoQuery &mko : task.get_ontology().mko_queries) {
+        bool same = mko.predicate == predicate_index(task, predicate) &&
+                    mko.arguments.size() == arguments.size() && mko.cqs.size() == 1;
+        for (size_t i = 0; same && i < arguments.size(); ++i) {
+            const Argument &argument = mko.arguments[i];
+            same = arguments[i][0] == '?'
+                       ? !argument.is_constant() &&
+                             argument.get_index() == stoi(arguments[i].substr(1))
+                       : argument.is_constant() &&
+                             argument.get_index() == object_index(task, arguments[i]);
+        }
+        if (same) {
+            return &mko.cqs[0];
+        }
+    }
+    return nullptr;
+}
+
+// The translated query of the only QUERY<i> of the given arity (their numbers
+// follow their rendering); null if there is none or several.
+const KoncludeQuery *query_of_arity(const Task &task, int arity) {
+    const KoncludeQuery *result = nullptr;
+    for (const auto &[predicate, cqs] : task.get_ontology().query_predicate_queries) {
+        if (task.predicates[predicate].getArity() == arity) {
+            if (result || cqs.size() != 1) {
+                return nullptr;
+            }
+            result = &cqs[0];
+        }
+    }
+    return result;
+}
+
+bool is_ask(const string &sparql) { return sparql.rfind("ASK ", 0) == 0; }
+
 // Tuples of object names, e.g. {{"red", "bob"}}.
 vector<GroundAtom> tuples(const Task &task, const vector<vector<string>> &names) {
     vector<GroundAtom> result;
@@ -90,14 +129,19 @@ void check(bool ok, const string &what) {
     }
 }
 
-// known_issue: a known Konclude bug makes the answers wrong; reported, but not
-// counted as a failure.
+// known_issue: a known Konclude bug makes the answers wrong or the query fail;
+// reported, but not counted as a failure.
 void check_answers(KoncludeStateReasoner &reasoner, const Task &task,
                    const string &label, const KoncludeQuery &query,
                    const vector<vector<string>> &expected,
                    const string &known_issue = "") {
     vector<GroundAtom> answers;
     if (!reasoner.answer(query, answers)) {
+        if (!known_issue.empty()) {
+            cout << "  KNOWN (" << known_issue << ") " << label << ": "
+                 << reasoner.last_error() << endl;
+            return;
+        }
         check(false, label + ": " + reasoner.last_error());
         return;
     }
@@ -158,10 +202,15 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // The mkos of the team task: (Recruit ?t ?p)'s precondition
-    // (mko (and (Team ?t) (Player ?p))) and the goal's (mko (hasMember red bob)),
-    // (mko (hasMember red carol)).
-    // The team-and-player mko is disconnected, so it has two components.
+    // The mkos of the team task (see its domain.pddl): Recruit and Transfer
+    // share (mko (and (Team ?t) (Player ?p))), Recruit and Celebrate
+    // (mko (exists (?c) (and (hasCaptain ?t ?c) (Captain ?c)))); Transfer reads
+    // (mko (hasMember ?from ?p)), Celebrate (mko (hasMember ?t star)), with the
+    // domain's constant star; the goal (mko (hasMember red bob)),
+    // (mko (hasMember red carol)) and
+    // (mko (exists (?t) (and (Team ?t) (hasMember ?t star)))). The queries
+    // below are hand-written; the translator's (one per mko) are checked too.
+    // A team-and-player query is disconnected, so it has two components.
     KoncludeQuery team_and_player{
         {PREFIXES + "SELECT ?t WHERE { ?t rdf:type team:Team . }",
          PREFIXES + "SELECT ?p WHERE { ?p rdf:type team:Player . }"},
@@ -174,6 +223,84 @@ int main(int argc, char *argv[]) {
     KoncludeQuery disconnected{
         {PREFIXES + "SELECT ?t ?p WHERE { ?t rdf:type team:Team . ?p rdf:type team:Player . }"},
         {"t", "p"}};
+    // ASK components select no variable: the empty tuple if entailed.
+    auto object = [&](const string &name) {
+        return "<" + ontology.vocabulary.object_iri_prefix + name + ">";
+    };
+    KoncludeQuery ask_red_bob{
+        {PREFIXES + "ASK { " + object("red") + " team:hasMember " + object("bob") + " . }"}, {}};
+    KoncludeQuery ask_star_member{
+        {PREFIXES + "ASK { _:t team:hasMember " + object("star") + " . }"}, {}};
+    // Team ⊑ ∃hasCaptain.Captain: blue's captain is anonymous.
+    KoncludeQuery ask_blue_captained{
+        {PREFIXES + "ASK { " + object("blue") + " team:hasCaptain _:c . _:c rdf:type team:Captain . }"},
+        {}};
+    // Only a role atom on the blank node: once wrongly true for every
+    // individual (ASK) or bound to an anonymous individual (SELECT).
+    KoncludeQuery ask_bob_captained{
+        {PREFIXES + "ASK { " + object("bob") + " team:hasCaptain _:c . }"}, {}};
+    KoncludeQuery captained_teams{
+        {PREFIXES + "SELECT ?t WHERE { ?t team:hasCaptain _:c . }"}, {"t"}};
+    // A SELECT and an ASK component: the teams, if red has bob.
+    KoncludeQuery teams_if_red_bob{
+        {PREFIXES + "SELECT ?t WHERE { ?t rdf:type team:Team . }", ask_red_bob.components[0]},
+        {"t"}};
+
+    // The translator's: three QUERY<i> (the shared ones and the goal's), four
+    // atomic mkos.
+    check(ontology.query_predicate_queries.size() == 3 && ontology.mko_queries.size() == 4,
+          "3 translated QUERY<i>, 4 translated atomic mkos");
+    // Its answer variables are its free variables, sorted: ?p, ?t.
+    const KoncludeQuery *player_and_team = query_of_arity(task, 2);
+    const KoncludeQuery *captained = query_of_arity(task, 1);
+    // No answer variable, so an ASK.
+    const KoncludeQuery *star_signed = query_of_arity(task, 0);
+    check(player_and_team && player_and_team->components.size() == 2,
+          "QUERY<i>(?p,?t) translated: two components");
+    check(captained && captained->components.size() == 1, "QUERY<i>(?t) translated");
+    check(star_signed && star_signed->components.size() == 1 &&
+              is_ask(star_signed->components[0]),
+          "QUERY<i>() translated: an ASK");
+    const KoncludeQuery *member = mko_query(task, "hasmember", {"?0", "?1"});
+    const KoncludeQuery *has_star = mko_query(task, "hasmember", {"?0", "star"});
+    // Ground, so an ASK.
+    const KoncludeQuery *red_bob = mko_query(task, "hasmember", {"red", "bob"});
+    const KoncludeQuery *red_carol = mko_query(task, "hasmember", {"red", "carol"});
+    check(member && has_star, "hasmember(?0,?1), hasmember(?0,star) translated");
+    check(red_bob && is_ask(red_bob->components[0]) && red_carol &&
+              is_ask(red_carol->components[0]),
+          "hasmember(red,bob), hasmember(red,carol) translated: ASKs");
+    auto answers = [&](const string &label, const KoncludeQuery *query,
+                       const vector<vector<string>> &expected) {
+        if (query) {
+            check_answers(reasoner, task, "translated " + label, *query, expected);
+        }
+    };
+    // A query without answer variables: the empty tuple if entailed, none
+    // otherwise.
+    auto entailed_if = [](bool entailed) {
+        return entailed ? vector<vector<string>>{{}} : vector<vector<string>>{};
+    };
+    // The goal's mkos.
+    auto goal_entailed = [&](bool bob, bool carol, bool star) {
+        answers("hasmember(red,bob)", red_bob, entailed_if(bob));
+        answers("hasmember(red,carol)", red_carol, entailed_if(carol));
+        answers("QUERY<i>() (star in a team)", star_signed, entailed_if(star));
+    };
+    // The hand-written ASK queries; star is in a team and blue captained in
+    // every state.
+    auto asks = [&](bool red_has_bob) {
+        check_answers(reasoner, task, "ASK hasMember(red,bob)", ask_red_bob,
+                      entailed_if(red_has_bob));
+        check_answers(reasoner, task, "ASK hasMember(_,star)", ask_star_member, entailed_if(true));
+        check_answers(reasoner, task, "ASK hasCaptain(blue,_), Captain(_)", ask_blue_captained,
+                      entailed_if(true));
+        check_answers(reasoner, task, "ASK hasCaptain(bob,_)", ask_bob_captained, entailed_if(false));
+        check_answers(reasoner, task, "hasCaptain(t,_)", captained_teams, {{"red"}, {"blue"}});
+        check_answers(reasoner, task, "Team(t) if ASK hasMember(red,bob)", teams_if_red_bob,
+                      red_has_bob ? vector<vector<string>>{{"red"}, {"blue"}}
+                                  : vector<vector<string>>{});
+    };
 
     const DBState &initial = task.get_initial_state();
     int has_member_index = predicate_index(task, "hasmember");
@@ -181,20 +308,36 @@ int main(int argc, char *argv[]) {
     after_bob.add_tuple(has_member_index, tuples(task, {{"red", "bob"}})[0]);
     DBState after_carol = after_bob;
     after_carol.add_tuple(has_member_index, tuples(task, {{"red", "carol"}})[0]);
+    // (transfer blue red star); DBState can't remove a tuple, so rebuild it.
+    vector<Relation> relations = after_carol.get_relations();
+    relations[has_member_index].tuples.erase(tuples(task, {{"blue", "star"}})[0]);
+    vector<bool> nullary_atoms = after_carol.get_nullary_atoms();
+    DBState after_star(move(relations), move(nullary_atoms),
+                       after_carol.get_number_objects());
+    after_star.add_tuple(has_member_index, tuples(task, {{"red", "star"}})[0]);
     vector<GroundAtom> goal = tuples(task, {{"red", "bob"}, {"red", "carol"}});
     vector<GroundAtom> entailed;
 
     cout << "initial state" << endl;
     check(reasoner.set_state(initial), "set_state");
-    check(reasoner.current_facts().size() == 3, "3 facts told (hascaptain, 2 hasmember)");
+    check(reasoner.current_facts().size() == 4, "4 facts told (hascaptain, 3 hasmember)");
     bool consistent = false;
     check(reasoner.is_consistent(consistent) && consistent, "consistent");
     // Only entailed: nothing in the state says who is a team or a player.
     check_answers(reasoner, task, "Team(t), Player(p)", team_and_player,
-                  {{"red", "alice"}, {"red", "bob"}, {"red", "carol"},
-                   {"blue", "alice"}, {"blue", "bob"}, {"blue", "carol"}});
+                  {{"red", "alice"}, {"red", "bob"}, {"red", "carol"}, {"red", "star"},
+                   {"blue", "alice"}, {"blue", "bob"}, {"blue", "carol"}, {"blue", "star"}});
+    answers("QUERY<i>(p,t) (player and team)", player_and_team,
+            {{"alice", "red"}, {"bob", "red"}, {"carol", "red"}, {"star", "red"},
+             {"alice", "blue"}, {"bob", "blue"}, {"carol", "blue"}, {"star", "blue"}});
+    // Team ⊑ ∃hasCaptain.Captain: blue's captain is anonymous.
+    answers("QUERY<i>(t) (captained team)", captained, {{"red"}, {"blue"}});
+    answers("hasmember(t,p)", member, {{"blue", "bob"}, {"blue", "carol"}, {"blue", "star"}});
+    answers("hasmember(t,star)", has_star, {{"blue"}});
+    goal_entailed(false, false, true);
+    asks(false);
     check_answers(reasoner, task, "hasMember(t,p)", has_member,
-                  {{"blue", "bob"}, {"blue", "carol"}});
+                  {{"blue", "bob"}, {"blue", "carol"}, {"blue", "star"}});
     // Team ⊑ ∃hasCaptain.Captain ⊓ ≤1 hasCaptain.Player: red's captain is alice.
     check_answers(reasoner, task, "Captain(x)", captain, {{"alice"}}, CAPTAIN_ISSUE);
     check(reasoner.entailed(has_member, goal, entailed) && entailed.empty(),
@@ -211,25 +354,37 @@ int main(int argc, char *argv[]) {
     check(diff.tell.size() == 1 && diff.retract.empty(), "diff tells 1 fact");
     check(reasoner.apply_diff(diff), "apply_diff");
     check_answers(reasoner, task, "hasMember(t,p)", has_member,
-                  {{"red", "bob"}, {"blue", "bob"}, {"blue", "carol"}});
+                  {{"red", "bob"}, {"blue", "bob"}, {"blue", "carol"}, {"blue", "star"}});
     check(reasoner.entailed(has_member, goal, entailed) &&
               entailed == tuples(task, {{"red", "bob"}}),
           "goal: only hasMember(red,bob) entailed");
+    goal_entailed(true, false, true);
+    asks(true);
 
     cout << "after (recruit red carol)" << endl;
     check(reasoner.set_state(after_carol), "set_state");
     check(reasoner.entailed(has_member, goal, entailed) && entailed == goal,
           "goal entailed");
+    goal_entailed(true, true, true);
+
+    cout << "after (transfer blue red star)" << endl;
+    diff = KoncludeStateReasoner::diff(reasoner.current_facts(), reasoner.facts_of(after_star));
+    check(diff.tell.size() == 1 && diff.retract.size() == 1, "diff tells 1, retracts 1 fact");
+    check(reasoner.set_state(after_star), "set_state");
+    answers("hasmember(t,star)", has_star, {{"red"}});
+    goal_entailed(true, true, true);
+    asks(true);
 
     cout << "back to the initial state" << endl;
-    check(KoncludeStateReasoner::diff(reasoner.current_facts(), reasoner.facts_of(initial))
-                  .retract.size() == 2,
-          "diff retracts 2 facts");
+    diff = KoncludeStateReasoner::diff(reasoner.current_facts(), reasoner.facts_of(initial));
+    check(diff.retract.size() == 3 && diff.tell.size() == 1, "diff retracts 3, tells 1 fact");
     check(reasoner.set_state(initial), "set_state");
     check_answers(reasoner, task, "hasMember(t,p)", has_member,
-                  {{"blue", "bob"}, {"blue", "carol"}});
+                  {{"blue", "bob"}, {"blue", "carol"}, {"blue", "star"}});
+    answers("hasmember(t,star)", has_star, {{"blue"}});
+    asks(false);
     check_answers(reasoner, task, "Captain(x)", captain, {{"alice"}}, CAPTAIN_ISSUE);
-    check(reasoner.set_state(initial) && reasoner.number_state_changes() == 4,
+    check(reasoner.set_state(initial) && reasoner.number_state_changes() == 5,
           "same state again: no state change");
 
     cout << reasoner.number_state_changes() << " state changes, "

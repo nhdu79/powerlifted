@@ -34,7 +34,7 @@ from owl.functional_serializer import (
     vocabulary,
 )
 from owl.ontology_shifter import shifted_complements
-from pddl import Literal, MinimalKnowledgeOperator
+from pddl import Conjunction, Literal, MinimalKnowledgeOperator
 from queries import datalog
 from queries.names import (
     ClipperSpelling,
@@ -44,6 +44,7 @@ from queries.names import (
 )
 from queries.naming import query_predicate_name
 from queries.rewriter import prepare_queries, query_atoms
+from queries.sparql import MkoQueries
 from queries.ucq_collector import UCQCollector
 from rules import (
     compute_lowerbound_rules,
@@ -156,7 +157,11 @@ def process_ontology(
     With functional_ontology_path, also writes the normalized ontology there
     in OWL functional syntax, for the search's Konclude reasoner, and stores
     on task.konclude_ontology what the .lifted file's ONTOLOGY section says
-    about it (see write_functional_ontology).
+    about it (see write_functional_ontology). Either way, stores on
+    task.konclude_mko_context the mko queries and the IRI of each predicate
+    that is an ontology class or object property, with which konclude_queries
+    translates the mkos into SPARQL, as the search is assumed to use
+    Konclude.
 
     Stores the rules on task.lowerbound_rules and task.upperbound_rules,
     declares the predicates they introduce in task.predicates, and replaces
@@ -170,7 +175,13 @@ def process_ontology(
 
     ontology = parse_owl(ontology_filepath)
     ontology_names = OntologyNames(ontology)
-    predicate_iris = vocabulary(task, ontology)
+    predicate_iris = vocabulary(
+        {p.name: len(p.arguments) for p in task.predicates}, ontology
+    )
+    # The queries may also read predicates the task dropped as unused (e.g.
+    # read only by mkos), which Konclude knows all the same.
+    query_arities = query_atoms(collector.ucqs)
+    query_iris = vocabulary(query_arities, ontology)
     normalize_ontology(ontology)
     # Before the rule computations below, which needn't leave it alone.
     normalized_axioms = list(ontology.axioms)
@@ -274,7 +285,9 @@ def process_ontology(
             normalized_axioms,
             predicate_iris,
             functional_ontology_path,
+            extra_iris={iri: query_arities[name] for name, iri in query_iris.items()},
         )
+    task.konclude_mko_context = (collector.ucqs, {**predicate_iris, **query_iris})
 
     if verbose:
         _print_compilation_information(
@@ -311,19 +324,21 @@ def _kept_complements(rules, complements):
     )
 
 
-def write_functional_ontology(task, iri, axioms, predicate_iris, path):
+def write_functional_ontology(task, iri, axioms, predicate_iris, path, extra_iris=()):
     """Write the (normalized) axioms to path in OWL functional syntax, and
     set task.konclude_ontology to (absolute path, object IRI prefix,
-    {predicate name: IRI})."""
+    {predicate name: IRI}).
+
+    extra_iris ({IRI: arity}) are declared too, e.g. those the mko queries
+    read."""
+    declared_iris = {
+        predicate_iris[p.name]: len(p.arguments)
+        for p in task.predicates
+        if p.name in predicate_iris
+    }
+    declared_iris.update(extra_iris)
     text = serialize_functional(
-        axioms,
-        iri,
-        [obj.name for obj in task.objects],
-        declared_iris={
-            predicate_iris[p.name]: len(p.arguments)
-            for p in task.predicates
-            if p.name in predicate_iris
-        },
+        axioms, iri, [obj.name for obj in task.objects], declared_iris=declared_iris
     )
     with open(path, "w") as f:
         f.write(text)
@@ -332,6 +347,33 @@ def write_functional_ontology(task, iri, axioms, predicate_iris, path):
         OBJECT_IRI_PREFIX,
         predicate_iris,
     )
+
+
+# The canaries of KONCLUDE-QUERIES entries; uppercase, so they differ from
+# every PDDL name (lowercased by the parser) and the other sections' canaries.
+KONCLUDE_QUERY = "KONCLUDE-QUERY"
+KONCLUDE_MKO = "KONCLUDE-MKO"
+
+
+def konclude_queries(task):
+    """The known mkos of the action preconditions and the goal, each with
+    its SPARQL query translated once (queries.sparql.MkoQueries), for the
+    .lifted file's KONCLUDE-QUERIES section; None without an ontology.
+    Reports the mkos without a translation."""
+    context = getattr(task, "konclude_mko_context", None)
+    if context is None:
+        return None
+    mkos = MkoQueries(*context, OBJECT_IRI_PREFIX)
+    goal = task.goal.parts if isinstance(task.goal, Conjunction) else [task.goal]
+    for action in task.actions:
+        for literal in action.get_action_preconditions:
+            mkos.add(literal)
+    for literal in goal:
+        mkos.add(literal)
+    for key, reason in mkos.untranslatable.items():
+        name = key if isinstance(key, str) else f"{key[0]}{key[1]}"
+        print(f"Konclude: the mko {name} has no SPARQL query: {reason}")
+    return mkos
 
 
 def _print_compilation_information(

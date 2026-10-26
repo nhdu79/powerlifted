@@ -41,23 +41,6 @@ struct KoncludeStateDiff {
 };
 
 /**
- * @brief A conjunctive query for Konclude, as one SPARQL SELECT (one basic
- * graph pattern) per connected component.
- *
- * @details Konclude answers only the first component of a disconnected
- * pattern (e.g. { ?t a :Team . ?p a :Player }), leaving the other variables
- * unbound. So each component is its own query, and the answers are their
- * product. Each component selects the variables of it that are answer
- * variables (or any one variable, if it has none).
- */
-struct KoncludeQuery {
-    std::vector<std::string> components;
-    // The answer variables (without "?"), in the order of the answer tuples;
-    // each selected by exactly one component.
-    std::vector<std::string> answer_variables;
-};
-
-/**
  * @brief Keeps Konclude's ABox equal to a search state and answers
  * conjunctive queries over it, w.r.t. the ontology.
  *
@@ -115,6 +98,8 @@ public:
 
     // All certain answers of query over the current state, as object
     // indices in the order of query.answer_variables; sorted, no duplicates.
+    // A query without answer variables (e.g. the goal's) has the empty tuple
+    // as its answer if it is entailed, none otherwise.
     bool answer(const KoncludeQuery &query, std::vector<GroundAtom> &answers);
 
     // The candidates (e.g. upperbound minus lowerbound answers) that are
@@ -136,7 +121,8 @@ private:
     bool fail_unusable(const std::string &message);
 
     // The answers of one component query: per row, the object of each
-    // selected variable (variables as listed in variables).
+    // selected variable (variables as listed in variables). For an ASK, no
+    // variables and one empty row if it is entailed, none otherwise.
     bool answer_component(const std::string &sparql,
                           std::vector<std::string> &variables,
                           std::vector<std::vector<int>> &rows);
