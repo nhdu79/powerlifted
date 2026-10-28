@@ -124,7 +124,7 @@ def add_effects_to_actions(task, graph):
                 types.add(type_name)
             for t in types:
                 atom = pddl.Atom(_get_type_predicate_name(t), [name])
-                new_eff.append(pddl.Effect([], pddl.Truth, atom))
+                new_eff.append(pddl.Effect([], pddl.Truth(), atom))
         action.effects = new_eff
 
 
