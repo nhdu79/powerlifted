@@ -247,19 +247,25 @@ class TestRun:
         cmd.extend(self.extra_args)
 
         start = timeit.default_timer()
-        # Use GNU time to capture peak RSS if available
+        # Use time to capture peak RSS if available (GNU time on Linux,
+        # BSD time on macOS)
         time_bin = '/usr/bin/time'
         peak_kb = None
         if os.path.isfile(time_bin):
             time_output_file = '/tmp/powerlifted_test_time.tmp'
-            full_cmd = [time_bin, '-v', '-o', time_output_file] + cmd
+            time_flag = '-l' if sys.platform == 'darwin' else '-v'
+            full_cmd = [time_bin, time_flag, '-o', time_output_file] + cmd
             output = subprocess.check_output(full_cmd, stderr=subprocess.STDOUT)
             wall_time = timeit.default_timer() - start
             try:
                 with open(time_output_file) as f:
                     for line in f:
                         if 'Maximum resident set size' in line:
+                            # GNU time: "Maximum resident set size (kbytes): N"
                             peak_kb = int(line.strip().split()[-1])
+                        elif 'maximum resident set size' in line:
+                            # BSD time: "N  maximum resident set size", in bytes
+                            peak_kb = int(line.split()[0]) // 1024
             except (OSError, ValueError):
                 pass
         else:
