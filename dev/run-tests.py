@@ -23,6 +23,10 @@ The expected run time of each run is less than 30s.
 
 BASEDIR = Path(__file__).resolve().parent.parent
 
+# The driver requires an ontology file (-o). None of the test tasks has an
+# ontology, so pass an empty placeholder.
+ONTOLOGY_PLACEHOLDER = os.devnull
+
 # Commented instances have costs which are currently ignored
 OPTIMAL_PLAN_COSTS = {'domains/airport/p05-airport2-p1.pddl': 21,
                       'domains/blocks/probBLOCKS-4-0.pddl': 6,
@@ -239,6 +243,7 @@ class TestRun:
         """Run the planner and return (output_bytes, wall_time_s, peak_memory_kb)."""
         cmd = [str(BASEDIR / 'powerlifted.py'),
                '-i', str(BASEDIR / 'dev' / self.instance),
+               '-o', ONTOLOGY_PLACEHOLDER,
                '-s', self.search,
                '-e', self.heuristic,
                '-g', self.generator]
