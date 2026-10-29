@@ -21,6 +21,9 @@ SuccessorGeneratorFactory::create(const std::string &method, unsigned seed, Task
 {
     std::cout << "Creating successor generator factory..." << std::endl;
     if (utils::iequals(method, "join")) {
+        return new NaiveSuccessorGenerator(task);
+    }
+    else if (utils::iequals(method, "join_neg")) {
         return new GenericNegationJoinSuccessorGenerator(task);
     }
     else if (utils::iequals(method, "full_reducer")) {
