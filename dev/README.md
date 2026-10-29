@@ -14,7 +14,7 @@ correctness regressions quickly before running larger experiments elsewhere.
 
 ## Local Test Coverage
 
-`run-tests.py` currently covers four kinds of checks:
+`run-tests.py` currently covers five kinds of checks:
 
 1. Core plan regression tests.
    These run `bfs` and `gbfs` with the `blind` heuristic on a small set of
@@ -29,6 +29,10 @@ correctness regressions quickly before running larger experiments elsewhere.
 4. Novelty / width-based smoke tests.
    These tests evaluate `bfws1`, `bfws1-rx`, `alt-bfws1`, and `dq-bfws1-rx`,
    including the novelty-related command-line flags.
+5. Negated preconditions.
+   These run the `join` generator on small tasks with negated preconditions,
+   including one task that must be proven unsolvable (`'solvable': False`).
+   See `domains/negation/README.md`.
 
 The local suite does not try to be exhaustive. The tests are also quite superficial,
 and full experiments should be always used.

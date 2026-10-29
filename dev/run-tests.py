@@ -156,6 +156,39 @@ NOVELTY_PLAN_TESTS = [
     },
 ]
 
+# Negated preconditions, which only the join successor generator supports.
+# See dev/domains/negation/README.md.
+NEGATION_CASE_COSTS = {'a1': 1, 'a2': 1, 'a3': 1, 'a4': 1, 'a5': 1, 'a5b': 1,
+                       'a6': 1, 'a7': 2, 'a10': 1, 'a12': 1}
+
+NEGATION_PLAN_TESTS = [
+    {
+        'instance': 'domains/negation/pos.pddl',
+        'label': 'negation-pos',
+        'cost': 21,
+        'validate': True,
+        'configs': [('bfs', 'blind', 'join'),
+                    ('alt-bfws1', 'ff', 'join')],
+    },
+    {
+        'instance': 'domains/negation/neg.pddl',
+        'label': 'negation-neg',
+        'cost': None,
+        'validate': False,
+        'solvable': False,
+        'configs': [('bfs', 'blind', 'join')],
+    },
+] + [
+    {
+        'instance': 'domains/negation/cases/{}.pddl'.format(case),
+        'label': 'negation-{}'.format(case),
+        'cost': cost,
+        'validate': True,
+        'configs': [('bfs', 'blind', 'join')],
+    }
+    for case, cost in NEGATION_CASE_COSTS.items()
+]
+
 CLI_OPTION_TESTS = [
     {
         'name': 'invalid-option',
@@ -582,6 +615,7 @@ if __name__ == '__main__':
     run_plan_test_cases(results, SPECIAL_PLAN_TESTS)
     run_plan_test_cases(results, heuristic_plan_tests)
     run_plan_test_cases(results, novelty_plan_tests)
+    run_plan_test_cases(results, NEGATION_PLAN_TESTS)
 
     for cli_test in CLI_OPTION_TESTS:
         results.append(run_cli_option_test(cli_test))
