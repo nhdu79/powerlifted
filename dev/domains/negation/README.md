@@ -1,6 +1,6 @@
 # Negated Preconditions
 
-Small tasks with negated atoms in action preconditions. Only the `join`
+Small tasks with negated atoms in action preconditions. Only the `join_neg`
 successor generator (`GenericNegationJoinSuccessorGenerator`, based on the
 `Query` class in `src/search/database/query.{h,cc}`) supports them. The other
 generators abort with "Actions with negated preconditions not supported yet".
@@ -16,8 +16,8 @@ terminate early (wrong cost, or no plan) instead of running forever.
 | `domain-neg.pddl`, `neg.pddl` | unsolvable (64 reachable states) | no test action produces a tuple that violates its precondition |
 | `cases/domain-aK.pddl`, `cases/aK.pddl` | solvable, cost 1 (`a7`: 2, `a13`: 3, `a14`: 5) | one test action each, so a failure points to a single case |
 
-`run-tests.py` runs `pos` with `bfs/blind/join` and `alt-bfws1/ff/join`, and
-`neg` and the cases with `bfs/blind/join`. Each problem file is found by the
+`run-tests.py` runs `pos` with `bfs/blind/join_neg` and `alt-bfws1/ff/join_neg`, and
+`neg` and the cases with `bfs/blind/join_neg`. Each problem file is found by the
 driver through the `domain-<instance>` naming rule.
 
 ## Test Actions

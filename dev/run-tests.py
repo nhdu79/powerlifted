@@ -168,8 +168,8 @@ NEGATION_PLAN_TESTS = [
         'label': 'negation-pos',
         'cost': 21,
         'validate': True,
-        'configs': [('bfs', 'blind', 'join'),
-                    ('alt-bfws1', 'ff', 'join')],
+        'configs': [('bfs', 'blind', 'join_neg'),
+                    ('alt-bfws1', 'ff', 'join_neg')],
     },
     {
         'instance': 'domains/negation/neg.pddl',
@@ -177,7 +177,7 @@ NEGATION_PLAN_TESTS = [
         'cost': None,
         'validate': False,
         'solvable': False,
-        'configs': [('bfs', 'blind', 'join')],
+        'configs': [('bfs', 'blind', 'join_neg')],
     },
 ] + [
     {
@@ -185,7 +185,7 @@ NEGATION_PLAN_TESTS = [
         'label': 'negation-{}'.format(case),
         'cost': cost,
         'validate': True,
-        'configs': [('bfs', 'blind', 'join')],
+        'configs': [('bfs', 'blind', 'join_neg')],
     }
     for case, cost in NEGATION_CASE_COSTS.items()
 ]

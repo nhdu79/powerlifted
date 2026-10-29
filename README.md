@@ -109,6 +109,7 @@ below).
 | Option         | Description                                                                              |
 |----------------|------------------------------------------------------------------------------------------|
 | `join`         | Join program using the predicate order given in the PDDL file                            |
+| `join_neg`     | Like `join`, but also supports negated preconditions                                     |
 | `random_join`  | Randomly ordered join program                                                            |
 | `ordered_join` | Join program ordered by predicate arity                                                  |
 | `full_reducer` | Full reducer for acyclic schemas; partial reducer + join for cyclic schemas              |

@@ -30,7 +30,7 @@ correctness regressions quickly before running larger experiments elsewhere.
    These tests evaluate `bfws1`, `bfws1-rx`, `alt-bfws1`, and `dq-bfws1-rx`,
    including the novelty-related command-line flags.
 5. Negated preconditions.
-   These run the `join` generator on small tasks with negated preconditions,
+   These run the `join_neg` generator on small tasks with negated preconditions,
    including one task that must be proven unsolvable (`'solvable': False`).
    See `domains/negation/README.md`.
 
