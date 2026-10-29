@@ -27,6 +27,11 @@ BASEDIR = Path(__file__).resolve().parent.parent
 # ontology, so pass an empty placeholder.
 ONTOLOGY_PLACEHOLDER = os.devnull
 
+# Exit code and output of the planner for provably unsolvable tasks
+# (utils::ExitCode::SEARCH_UNSOLVABLE).
+UNSOLVABLE_EXIT_CODE = 11
+UNSOLVABLE_OUTPUT = 'Task is provably unsolvable.'
+
 # Commented instances have costs which are currently ignored
 OPTIMAL_PLAN_COSTS = {'domains/airport/p05-airport2-p1.pddl': 21,
                       'domains/blocks/probBLOCKS-4-0.pddl': 6,
@@ -199,15 +204,19 @@ class TestRun:
                  validate=True,
                  label=None,
                  required_output=None,
-                 extra_args=None):
+                 extra_args=None,
+                 solvable=True):
         self.instance = instance
         self.search = config[0]
         self.heuristic = config[1]
         self.generator = config[2]
         self.validate = validate
         self.label = label
-        self.required_output = required_output or []
+        self.required_output = list(required_output or [])
         self.extra_args = extra_args or []
+        self.solvable = solvable
+        if not solvable:
+            self.required_output.append(UNSOLVABLE_OUTPUT)
 
     def get_config(self):
         return "{}, {}, and {}".format(self.search,
@@ -239,6 +248,15 @@ class TestRun:
     def __str__(self):
         return "{} with {}".format(self.instance, self.get_config())
 
+    def execute(self, cmd):
+        """Run cmd and return its output. Raise CalledProcessError if the
+        exit code is not the expected one for a (un)solvable task."""
+        expected_code = 0 if self.solvable else UNSOLVABLE_EXIT_CODE
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
+        if proc.returncode != expected_code:
+            raise subprocess.CalledProcessError(proc.returncode, cmd, proc.stdout)
+        return proc.stdout
+
     def run(self):
         """Run the planner and return (output_bytes, wall_time_s, peak_memory_kb)."""
         cmd = [str(BASEDIR / 'powerlifted.py'),
@@ -260,7 +278,7 @@ class TestRun:
             time_output_file = '/tmp/powerlifted_test_time.tmp'
             time_flag = '-l' if sys.platform == 'darwin' else '-v'
             full_cmd = [time_bin, time_flag, '-o', time_output_file] + cmd
-            output = subprocess.check_output(full_cmd, stderr=subprocess.STDOUT)
+            output = self.execute(full_cmd)
             wall_time = timeit.default_timer() - start
             try:
                 with open(time_output_file) as f:
@@ -274,7 +292,7 @@ class TestRun:
             except (OSError, ValueError):
                 pass
         else:
-            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+            output = self.execute(cmd)
             wall_time = timeit.default_timer() - start
 
         return output, wall_time, peak_kb
@@ -291,7 +309,9 @@ class TestRun:
                 plan_valid = True
 
         passed = True
-        if optimal_cost is not None:
+        if not self.solvable:
+            passed = (plan_length_found is None)
+        elif optimal_cost is not None:
             passed = (plan_length_found == optimal_cost)
         elif plan_length_found is None:
             passed = False
@@ -306,7 +326,10 @@ class TestRun:
         status = "PASSED" if passed else "FAILED"
         details = ""
         if not passed:
-            if optimal_cost is not None and plan_length_found != optimal_cost:
+            if not self.solvable and plan_length_found is not None:
+                details += " [expected unsolvable, found plan with cost: {}]".format(
+                    plan_length_found)
+            elif optimal_cost is not None and plan_length_found != optimal_cost:
                 details += " [expected: {}, found: {}]".format(
                     optimal_cost, plan_length_found)
             elif optimal_cost is None and plan_length_found is None:
@@ -390,7 +413,8 @@ def run_plan_test_cases(results, test_cases):
                            validate=test_case['validate'],
                            label=test_case['label'],
                            required_output=required_output,
-                           extra_args=test_case.get('extra_args_by_config', {}).get(config, []))
+                           extra_args=test_case.get('extra_args_by_config', {}).get(config, []),
+                           solvable=test_case.get('solvable', True))
             try:
                 output, wall_time, peak_kb = test.run()
                 result = test.evaluate(output, test_case['cost'], wall_time, peak_kb)
