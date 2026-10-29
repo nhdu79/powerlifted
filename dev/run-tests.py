@@ -41,7 +41,9 @@ OPTIMAL_PLAN_COSTS = {'domains/airport/p05-airport2-p1.pddl': 21,
                       'domains/organic-synthesis/p05.pddl': 2}
 SEARCH_CONFIGS = ['bfs', 'gbfs']
 HEURISTIC_CONFIGS = ['blind']
-GENERATOR_CONFIGS = ['full_reducer', 'join', 'yannakakis']
+GENERATOR_CONFIGS = ['full_reducer', 'join', 'join_neg', 'yannakakis']
+# Successor generators whose time and memory are compared side by side
+COMPARED_GENERATORS = ('join', 'join_neg')
 
 SPECIAL_PLAN_TESTS = [
     {
@@ -229,6 +231,8 @@ class TestResult:
     expected_cost: Optional[int]
     found_cost: Optional[int]
     plan_valid: Optional[bool]
+    # CPU time of the search component only, as reported by the planner
+    search_time: Optional[float] = None
 
 
 class TestRun:
@@ -335,12 +339,15 @@ class TestRun:
         """Evaluate output and return a TestResult."""
         plan_length_found = None
         plan_valid = None
+        search_time = None
         decoded_output = output.decode('utf-8', errors='replace')
         for line in output.splitlines():
             if b'Total plan cost:' in line:
                 plan_length_found = int(line.split()[3])
             if b'Plan valid' in line:
                 plan_valid = True
+            if line.startswith(b'Total time:'):
+                search_time = float(line.split()[2])
 
         passed = True
         if not self.solvable:
@@ -392,6 +399,7 @@ class TestRun:
             expected_cost=optimal_cost,
             found_cost=plan_length_found,
             plan_valid=plan_valid,
+            search_time=search_time,
         )
 
     def remove_plan_file(self):
@@ -472,23 +480,24 @@ def run_plan_test_cases(results, test_cases):
 
 def print_summary_table(results, total_time):
     """Print a formatted summary table of all test results."""
-    w = 100
+    w = 109
     print("\n" + "=" * w)
     print("SUMMARY")
     print("=" * w)
 
     # Header
-    print("{:<18} {:<25} {:<28} {:>6} {:>8} {:>8}".format(
-        "Domain", "Instance", "Config", "Status", "Time", "Memory"))
+    print("{:<18} {:<25} {:<28} {:>6} {:>8} {:>8} {:>8}".format(
+        "Domain", "Instance", "Config", "Status", "Time", "Search", "Memory"))
     print("-" * w)
 
     for r in results:
         status = "OK" if r.passed else "FAIL"
         time_str = "{:.2f}s".format(r.wall_time)
+        search_str = "{:.3f}s".format(r.search_time) if r.search_time is not None else "N/A"
         mem_str = "{:.1f}MB".format(r.peak_memory_kb / 1024) if r.peak_memory_kb else "N/A"
-        print("{:<18} {:<25} {:<28} {:>6} {:>8} {:>8}".format(
+        print("{:<18} {:<25} {:<28} {:>6} {:>8} {:>8} {:>8}".format(
             r.domain[:18], r.instance_name[:25], r.config[:28],
-            status, time_str, mem_str))
+            status, time_str, search_str, mem_str))
 
     print("-" * w)
     passes = sum(1 for r in results if r.passed)
@@ -514,12 +523,66 @@ def store_results(results, filepath):
     for r in results:
         data[r.name] = {
             'wall_time': r.wall_time,
+            'search_time': r.search_time,
             'peak_memory_kb': r.peak_memory_kb,
             'passed': r.passed,
         }
     with open(filepath, 'w') as f:
         json.dump(data, f, indent=2)
     print("Results saved to {}".format(filepath))
+
+
+def print_generator_comparison(results, generators):
+    """Print search time and peak memory of two successor generators side by
+    side, for each instance and search/heuristic configuration run with both.
+    Ratios are second / first generator."""
+    first, second = generators
+    by_config = {}
+    for r in results:
+        search_heuristic, _, generator = r.config.rpartition(',')
+        if generator in generators:
+            key = (r.domain, r.instance_name, search_heuristic)
+            by_config.setdefault(key, {})[generator] = r
+    rows = [(key, gens[first], gens[second]) for key, gens in by_config.items()
+            if first in gens and second in gens]
+    if not rows:
+        return
+
+    def fmt_time(t):
+        return "{:.3f}s".format(t) if t is not None else "N/A"
+
+    def fmt_mem(kb):
+        return "{:.1f}MB".format(kb / 1024) if kb else "N/A"
+
+    def fmt_ratio(a, b):
+        if not a or b is None:
+            return "N/A"
+        return "{:.2f}x".format(b / a) if b / a >= 0.01 else "<0.01x"
+
+    w = 109
+    print("\n" + "=" * w)
+    print("GENERATORS: {} vs. {} (search time: CPU time of the search component; "
+          "memory: peak of all processes)".format(first, second))
+    print("=" * w)
+    print("{:<50} {:^27}  {:^27}".format("", "Search time", "Memory"))
+    print("{:<18} {:<20} {:<10} {:>9} {:>9} {:>7}  {:>9} {:>9} {:>7}".format(
+        "Domain", "Instance", "Config", first[:9], second[:9], "Ratio",
+        first[:9], second[:9], "Ratio"))
+    print("-" * w)
+    for (domain, instance, search_heuristic), a, b in rows:
+        failed = "" if a.passed and b.passed else "  (FAILED)"
+        print("{:<18} {:<20} {:<10} {:>9} {:>9} {:>7}  {:>9} {:>9} {:>7}{}".format(
+            domain[:18], instance[:20], search_heuristic[:10],
+            fmt_time(a.search_time), fmt_time(b.search_time),
+            fmt_ratio(a.search_time, b.search_time),
+            fmt_mem(a.peak_memory_kb), fmt_mem(b.peak_memory_kb),
+            fmt_ratio(a.peak_memory_kb, b.peak_memory_kb), failed))
+    print("-" * w)
+    total_a = sum(a.search_time or 0 for _, a, _ in rows)
+    total_b = sum(b.search_time or 0 for _, _, b in rows)
+    print("{:<50} {:>9} {:>9} {:>7}".format(
+        "Total", fmt_time(total_a), fmt_time(total_b), fmt_ratio(total_a, total_b)))
+    print("=" * w)
 
 
 def compare_results(results, filepath):
@@ -623,6 +686,7 @@ if __name__ == '__main__':
 
     total_time = timeit.default_timer() - start
     print_summary_table(results, total_time)
+    print_generator_comparison(results, COMPARED_GENERATORS)
 
     if args.store_results:
         store_results(results, args.store_results)

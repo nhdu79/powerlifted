@@ -17,8 +17,9 @@ correctness regressions quickly before running larger experiments elsewhere.
 `run-tests.py` currently covers five kinds of checks:
 
 1. Core plan regression tests.
-   These run `bfs` and `gbfs` with the `blind` heuristic on a small set of
-   benchmark instances and check the expected plan cost.
+   These run `bfs` and `gbfs` with the `blind` heuristic and the successor
+   generators `full_reducer`, `join`, `join_neg`, and `yannakakis` on a small
+   set of benchmark instances and check the expected plan cost.
 2. Special-case planner paths.
    These include `clique_bk`, `clique_kckp`, a small object-creation task, and
    a disjunctive-precondition task that checks the Datalog heuristics on
@@ -68,6 +69,13 @@ Compare the current run against a stored baseline:
 ```bash
 python dev/run-tests.py --compare-results dev/results.json
 ```
+
+The summary shows, per test, the wall time of the whole planner run, the CPU
+time of the search component alone (`Search`), and the peak memory of all
+planner processes. After the summary, the full suite prints `join` and
+`join_neg` side by side for each core instance and configuration
+(`COMPARED_GENERATORS`). On small tasks, the Python translator (about 0.2 s and
+20 MB) dominates wall time and memory, so compare search times there.
 
 ## Important Caveats
 
