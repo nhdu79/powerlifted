@@ -13,8 +13,8 @@ terminate early (wrong cost, or no plan) instead of running forever.
 | Files | Expected result | Checks |
 |---|---|---|
 | `domain-pos.pddl`, `pos.pddl` | solvable, optimal cost 21 (87 reachable states) | every test action produces a specific tuple that satisfies its precondition |
-| `domain-neg.pddl`, `neg.pddl` | unsolvable (64 reachable states) | no test action produces a tuple that violates its negated precondition |
-| `cases/domain-aK.pddl`, `cases/aK.pddl` | solvable, cost 1 (`a7`: 2) | one test action each, so a failure points to a single case |
+| `domain-neg.pddl`, `neg.pddl` | unsolvable (64 reachable states) | no test action produces a tuple that violates its precondition |
+| `cases/domain-aK.pddl`, `cases/aK.pddl` | solvable, cost 1 (`a7`: 2, `a13`: 3, `a14`: 5) | one test action each, so a failure points to a single case |
 
 `run-tests.py` runs `pos` with `bfs/blind/join` and `alt-bfws1/ff/join`, and
 `neg` and the cases with `bfs/blind/join`. Each problem file is found by the
@@ -42,7 +42,19 @@ Only in `neg`:
 | `a2b` | negated ground atom that is always true, so the action is never applicable |
 | `a8` | negated atom that is always added together with a positive atom of the same precondition |
 
-The numbering comes from an earlier combined domain. There is no `a9` or `a11`.
+Only in `cases/` and `neg` (data: `edge` = {12, 23, 31, 11, 21}, `forbid` = {23},
+`m` = {n1, s1}, `r` = {21, 33}, `tri` = {123, 132, 221, 323}):
+
+| Action | Precondition pattern | Required in `cases/` | Excluded in `neg` |
+|---|---|---|---|
+| `a13` | negated filter that removes several rows (2 of 5) at the same join step (`(edge ?x ?y)`, `(not (m ?x))`) | all 3 remaining tuples | `n1 n2`, `n1 n1` |
+| `a14` | negated static filter that removes no rows (`(edge ?x ?y)`, `(not (forbid ?y ?x))`) | all 5 edges | (not in `neg`) |
+| `a15` | joined fluent atom with a constant in a non-final position (`(m ?x)`, `(tri ?x n2 ?y)`) | `n1 n3` | `n1 n2` |
+| `a16` | repeated variable in the only positive atom except the type atom (`(r ?x ?x)`) | `n3` | `n2` |
+| `a17` | positive fluent atom whose variables are already covered, used as a filter (`(edge ?x ?y)`, `(r ?y ?x)`) | `n1 n2` | `n2 n1` |
+
+The numbering of `a1` to `a12` comes from an earlier combined domain. There is
+no `a9` or `a11`.
 
 ### How `pos` works
 
@@ -57,18 +69,13 @@ required tuple, the goal `(st11)` becomes unreachable. If it wrongly allows
 ### How `neg` works
 
 Each test action additionally requires a `badK` atom, which lists tuples that
-satisfy the positive part of the precondition but violate the negated part.
+violate the rest of the precondition. In `a1` to `a12`, these tuples satisfy the
+positive part but violate a negated atom.
 Every test action has the effect `(violation)`, which is the goal. If the
 generator wrongly accepts such a tuple, the task becomes solvable.
 
-## Still to Add
-
-1. A filter that removes several rows at the same join step (e.g. a negated
-   atom that holds for 2 of 3 candidates).
-2. A filter that removes no rows.
-3. A positive (joined) atom with a constant in a non-final position, e.g.
-   `(r ?x n2 ?y)`.
-4. A repeated variable in a joined positive atom, with no other positive atom
-   on that variable except its type atom.
-5. A positive fluent atom whose variables are already covered, so it is used as
-   a filter.
+The translator sorts precondition atoms by predicate name, and this order
+determines the join order. In `a1` to `a12`, `badK` therefore comes first and
+is the only join atom, and all other atoms act as filters. For `a13` to `a17`,
+the predicates are named `zbadK`, so they come last and act only as a final
+filter. Their join structure is then the same as in `cases/`.

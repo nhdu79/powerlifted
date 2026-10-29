@@ -159,7 +159,8 @@ NOVELTY_PLAN_TESTS = [
 # Negated preconditions, which only the join successor generator supports.
 # See dev/domains/negation/README.md.
 NEGATION_CASE_COSTS = {'a1': 1, 'a2': 1, 'a3': 1, 'a4': 1, 'a5': 1, 'a5b': 1,
-                       'a6': 1, 'a7': 2, 'a10': 1, 'a12': 1}
+                       'a6': 1, 'a7': 2, 'a10': 1, 'a12': 1, 'a13': 3, 'a14': 5,
+                       'a15': 1, 'a16': 1, 'a17': 1}
 
 NEGATION_PLAN_TESTS = [
     {
