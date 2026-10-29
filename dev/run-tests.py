@@ -158,7 +158,7 @@ NOVELTY_PLAN_TESTS = [
     },
 ]
 
-# Negated preconditions, which only the join successor generator supports.
+# Negated preconditions, which only the join_neg successor generator supports.
 # See dev/domains/negation/README.md.
 NEGATION_CASE_COSTS = {'a1': 1, 'a2': 1, 'a3': 1, 'a4': 1, 'a5': 1, 'a5b': 1,
                        'a6': 1, 'a7': 2, 'a10': 1, 'a12': 1, 'a13': 3, 'a14': 5,
@@ -172,6 +172,22 @@ NEGATION_PLAN_TESTS = [
         'validate': True,
         'configs': [('bfs', 'blind', 'join_neg'),
                     ('alt-bfws1', 'ff', 'join_neg')],
+    },
+    {
+        # The heuristics are computed from the action schemas, separately from
+        # the successor generator. Every plan of pos has cost 21, so the cost is
+        # also checked for the non-optimal searches.
+        'instance': 'domains/negation/pos.pddl',
+        'label': 'negation-pos-heuristics',
+        'cost': 21,
+        'validate': True,
+        'required_output': ['Initial heuristic value '],
+        'configs': [('gbfs', 'goalcount', 'join_neg'),
+                    ('gbfs', 'add', 'join_neg'),
+                    ('gbfs', 'hmax', 'join_neg'),
+                    ('gbfs', 'ff', 'join_neg'),
+                    ('gbfs', 'rff', 'join_neg'),
+                    ('astar', 'hmax', 'join_neg')],
     },
     {
         'instance': 'domains/negation/neg.pddl',

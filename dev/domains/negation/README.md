@@ -16,9 +16,18 @@ terminate early (wrong cost, or no plan) instead of running forever.
 | `domain-neg.pddl`, `neg.pddl` | unsolvable (64 reachable states) | no test action produces a tuple that violates its precondition |
 | `cases/domain-aK.pddl`, `cases/aK.pddl` | solvable, cost 1 (`a7`: 2, `a13`: 3, `a14`: 5) | one test action each, so a failure points to a single case |
 
-`run-tests.py` runs `pos` with `bfs/blind/join_neg` and `alt-bfws1/ff/join_neg`, and
-`neg` and the cases with `bfs/blind/join_neg`. Each problem file is found by the
-driver through the `domain-<instance>` naming rule.
+`run-tests.py` runs all tasks with the `join_neg` generator:
+
+- `pos` with `bfs/blind` and `alt-bfws1/ff`, and with the heuristics
+  `goalcount`, `add`, `hmax`, `ff` and `rff` (with `gbfs`) and `hmax` (with
+  `astar`). The heuristics are computed from the action schemas, separately
+  from the successor generator. Every plan of `pos` has cost 21, so the cost is
+  also checked for the non-optimal searches.
+- `neg` and the cases with `bfs/blind`. A heuristic could prune states of
+  `neg` and hide a wrongly admitted tuple, so `neg` uses blind search only.
+
+Each problem file is found by the driver through the `domain-<instance>`
+naming rule.
 
 ## Test Actions
 
