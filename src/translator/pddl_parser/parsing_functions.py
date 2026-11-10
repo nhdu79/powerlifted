@@ -16,10 +16,11 @@ import pddl
 
 MKO = "mko"
 
-UNSUPPORTED_FEATURES = ["imply",
-                        "forall",
-                        "exists",
-                        "when"]
+#UNSUPPORTED_FEATURES = ["imply",
+#                        "forall",
+#                        "exists",
+#                        "when"]
+UNSUPPORTED_FEATURES = []
 
 SUPPORTED_IN_MKOS = ["exists"]
 
@@ -257,6 +258,10 @@ def parse_effect(alist, type_dict, predicate_dict, fresh_var_set):
         return pddl.ConjunctiveEffect(
             [parse_effect(eff, type_dict, predicate_dict, fresh_var_set) for eff in alist[1:]])
     elif tag == ":new":
+        print('ERROR: This version of Powerlifted does not support object creation',
+              file=sys.stderr)
+        sys.exit(-1)
+
         global uniq_fresh_var_id
         assert len(alist) == 3
         parameters = parse_typed_list(alist[1])
@@ -477,10 +482,8 @@ def parse_domain_pddl(domain_pddl):
     the_actions = []
     for entry in entries:
         if entry[0] == ":derived":
-            #axiom = parse_axiom(entry, type_dict, predicate_dict)
-            #the_axioms.append(axiom)
-            print("ERROR: Derived predicates are not supported.", file=sys.stderr)
-            sys.exit(-1)
+            axiom = parse_axiom(entry, type_dict, predicate_dict)
+            the_axioms.append(axiom)
         else:
             action = parse_action(entry, type_dict, predicate_dict)
             if action is not None:
