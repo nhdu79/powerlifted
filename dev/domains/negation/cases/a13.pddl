@@ -1,0 +1,10 @@
+(define (problem case-a13) (:domain case-a13)
+  (:objects n1 n2 n3 - node s1 s2 - special)
+  (:init
+    (edge n1 n2) (edge n2 n3) (edge n3 n1) (edge n1 n1) (edge n2 n1)
+    (forbid n2 n3)
+    (m n1) (m s1)
+    (r n2 n1) (r n3 n3)
+    (lk n1)
+    (tri n1 n2 n3) (tri n1 n3 n2) (tri n2 n2 n1) (tri n3 n2 n3))
+  (:goal (and (d13 n2 n3) (d13 n3 n1) (d13 n2 n1))))

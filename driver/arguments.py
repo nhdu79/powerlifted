@@ -32,6 +32,7 @@ EVALUATOR_CHOICES = ["blind",
 
 SUCCESSOR_GENERATOR_CHOICES = ['yannakakis',
                                'join',
+                               'join_neg',
                                'random_join',
                                'ordered_join',
                                'full_reducer',

@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
             unsupported_features = true;
         }
         std::set<std::string> OBJ_CREATION_SUCCESSOR = {
-            "full_reducer", "join", "ordered_join", "random_join", "yannakakis"};
+            "full_reducer", "join", "join_neg", "ordered_join", "random_join", "yannakakis"};
         std::string successor_generator = opt.get_successor_generator();
         if (!OBJ_CREATION_SUCCESSOR.count(successor_generator)) {
             std::cerr << "ERROR: Successor generator " << successor_generator

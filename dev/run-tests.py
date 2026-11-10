@@ -23,6 +23,15 @@ The expected run time of each run is less than 30s.
 
 BASEDIR = Path(__file__).resolve().parent.parent
 
+# The driver requires an ontology file (-o). None of the test tasks has an
+# ontology, so pass an empty placeholder.
+ONTOLOGY_PLACEHOLDER = os.devnull
+
+# Exit code and output of the planner for provably unsolvable tasks
+# (utils::ExitCode::SEARCH_UNSOLVABLE).
+UNSOLVABLE_EXIT_CODE = 11
+UNSOLVABLE_OUTPUT = 'Task is provably unsolvable.'
+
 # Commented instances have costs which are currently ignored
 OPTIMAL_PLAN_COSTS = {'domains/airport/p05-airport2-p1.pddl': 21,
                       'domains/blocks/probBLOCKS-4-0.pddl': 6,
@@ -32,7 +41,9 @@ OPTIMAL_PLAN_COSTS = {'domains/airport/p05-airport2-p1.pddl': 21,
                       'domains/organic-synthesis/p05.pddl': 2}
 SEARCH_CONFIGS = ['bfs', 'gbfs']
 HEURISTIC_CONFIGS = ['blind']
-GENERATOR_CONFIGS = ['full_reducer', 'join', 'yannakakis']
+GENERATOR_CONFIGS = ['full_reducer', 'join', 'join_neg', 'yannakakis']
+# Successor generators whose time and memory are compared side by side
+COMPARED_GENERATORS = ('join', 'join_neg')
 
 SPECIAL_PLAN_TESTS = [
     {
@@ -147,6 +158,56 @@ NOVELTY_PLAN_TESTS = [
     },
 ]
 
+# Negated preconditions, which only the join_neg successor generator supports.
+# See dev/domains/negation/README.md.
+NEGATION_CASE_COSTS = {'a1': 1, 'a2': 1, 'a3': 1, 'a4': 1, 'a5': 1, 'a5b': 1,
+                       'a6': 1, 'a7': 2, 'a10': 1, 'a12': 1, 'a13': 3, 'a14': 5,
+                       'a15': 1, 'a16': 1, 'a17': 1}
+
+NEGATION_PLAN_TESTS = [
+    {
+        'instance': 'domains/negation/pos.pddl',
+        'label': 'negation-pos',
+        'cost': 21,
+        'validate': True,
+        'configs': [('bfs', 'blind', 'join_neg'),
+                    ('alt-bfws1', 'ff', 'join_neg')],
+    },
+    {
+        # The heuristics are computed from the action schemas, separately from
+        # the successor generator. Every plan of pos has cost 21, so the cost is
+        # also checked for the non-optimal searches.
+        'instance': 'domains/negation/pos.pddl',
+        'label': 'negation-pos-heuristics',
+        'cost': 21,
+        'validate': True,
+        'required_output': ['Initial heuristic value '],
+        'configs': [('gbfs', 'goalcount', 'join_neg'),
+                    ('gbfs', 'add', 'join_neg'),
+                    ('gbfs', 'hmax', 'join_neg'),
+                    ('gbfs', 'ff', 'join_neg'),
+                    ('gbfs', 'rff', 'join_neg'),
+                    ('astar', 'hmax', 'join_neg')],
+    },
+    {
+        'instance': 'domains/negation/neg.pddl',
+        'label': 'negation-neg',
+        'cost': None,
+        'validate': False,
+        'solvable': False,
+        'configs': [('bfs', 'blind', 'join_neg')],
+    },
+] + [
+    {
+        'instance': 'domains/negation/cases/{}.pddl'.format(case),
+        'label': 'negation-{}'.format(case),
+        'cost': cost,
+        'validate': True,
+        'configs': [('bfs', 'blind', 'join_neg')],
+    }
+    for case, cost in NEGATION_CASE_COSTS.items()
+]
+
 CLI_OPTION_TESTS = [
     {
         'name': 'invalid-option',
@@ -186,6 +247,8 @@ class TestResult:
     expected_cost: Optional[int]
     found_cost: Optional[int]
     plan_valid: Optional[bool]
+    # CPU time of the search component only, as reported by the planner
+    search_time: Optional[float] = None
 
 
 class TestRun:
@@ -195,15 +258,19 @@ class TestRun:
                  validate=True,
                  label=None,
                  required_output=None,
-                 extra_args=None):
+                 extra_args=None,
+                 solvable=True):
         self.instance = instance
         self.search = config[0]
         self.heuristic = config[1]
         self.generator = config[2]
         self.validate = validate
         self.label = label
-        self.required_output = required_output or []
+        self.required_output = list(required_output or [])
         self.extra_args = extra_args or []
+        self.solvable = solvable
+        if not solvable:
+            self.required_output.append(UNSOLVABLE_OUTPUT)
 
     def get_config(self):
         return "{}, {}, and {}".format(self.search,
@@ -235,10 +302,20 @@ class TestRun:
     def __str__(self):
         return "{} with {}".format(self.instance, self.get_config())
 
+    def execute(self, cmd):
+        """Run cmd and return its output. Raise CalledProcessError if the
+        exit code is not the expected one for a (un)solvable task."""
+        expected_code = 0 if self.solvable else UNSOLVABLE_EXIT_CODE
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
+        if proc.returncode != expected_code:
+            raise subprocess.CalledProcessError(proc.returncode, cmd, proc.stdout)
+        return proc.stdout
+
     def run(self):
         """Run the planner and return (output_bytes, wall_time_s, peak_memory_kb)."""
         cmd = [str(BASEDIR / 'powerlifted.py'),
                '-i', str(BASEDIR / 'dev' / self.instance),
+               '-o', ONTOLOGY_PLACEHOLDER,
                '-s', self.search,
                '-e', self.heuristic,
                '-g', self.generator]
@@ -247,23 +324,29 @@ class TestRun:
         cmd.extend(self.extra_args)
 
         start = timeit.default_timer()
-        # Use GNU time to capture peak RSS if available
+        # Use time to capture peak RSS if available (GNU time on Linux,
+        # BSD time on macOS)
         time_bin = '/usr/bin/time'
         peak_kb = None
         if os.path.isfile(time_bin):
             time_output_file = '/tmp/powerlifted_test_time.tmp'
-            full_cmd = [time_bin, '-v', '-o', time_output_file] + cmd
-            output = subprocess.check_output(full_cmd, stderr=subprocess.STDOUT)
+            time_flag = '-l' if sys.platform == 'darwin' else '-v'
+            full_cmd = [time_bin, time_flag, '-o', time_output_file] + cmd
+            output = self.execute(full_cmd)
             wall_time = timeit.default_timer() - start
             try:
                 with open(time_output_file) as f:
                     for line in f:
                         if 'Maximum resident set size' in line:
+                            # GNU time: "Maximum resident set size (kbytes): N"
                             peak_kb = int(line.strip().split()[-1])
+                        elif 'maximum resident set size' in line:
+                            # BSD time: "N  maximum resident set size", in bytes
+                            peak_kb = int(line.split()[0]) // 1024
             except (OSError, ValueError):
                 pass
         else:
-            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+            output = self.execute(cmd)
             wall_time = timeit.default_timer() - start
 
         return output, wall_time, peak_kb
@@ -272,15 +355,20 @@ class TestRun:
         """Evaluate output and return a TestResult."""
         plan_length_found = None
         plan_valid = None
+        search_time = None
         decoded_output = output.decode('utf-8', errors='replace')
         for line in output.splitlines():
             if b'Total plan cost:' in line:
                 plan_length_found = int(line.split()[3])
             if b'Plan valid' in line:
                 plan_valid = True
+            if line.startswith(b'Total time:'):
+                search_time = float(line.split()[2])
 
         passed = True
-        if optimal_cost is not None:
+        if not self.solvable:
+            passed = (plan_length_found is None)
+        elif optimal_cost is not None:
             passed = (plan_length_found == optimal_cost)
         elif plan_length_found is None:
             passed = False
@@ -295,7 +383,10 @@ class TestRun:
         status = "PASSED" if passed else "FAILED"
         details = ""
         if not passed:
-            if optimal_cost is not None and plan_length_found != optimal_cost:
+            if not self.solvable and plan_length_found is not None:
+                details += " [expected unsolvable, found plan with cost: {}]".format(
+                    plan_length_found)
+            elif optimal_cost is not None and plan_length_found != optimal_cost:
                 details += " [expected: {}, found: {}]".format(
                     optimal_cost, plan_length_found)
             elif optimal_cost is None and plan_length_found is None:
@@ -324,6 +415,7 @@ class TestRun:
             expected_cost=optimal_cost,
             found_cost=plan_length_found,
             plan_valid=plan_valid,
+            search_time=search_time,
         )
 
     def remove_plan_file(self):
@@ -379,7 +471,8 @@ def run_plan_test_cases(results, test_cases):
                            validate=test_case['validate'],
                            label=test_case['label'],
                            required_output=required_output,
-                           extra_args=test_case.get('extra_args_by_config', {}).get(config, []))
+                           extra_args=test_case.get('extra_args_by_config', {}).get(config, []),
+                           solvable=test_case.get('solvable', True))
             try:
                 output, wall_time, peak_kb = test.run()
                 result = test.evaluate(output, test_case['cost'], wall_time, peak_kb)
@@ -403,23 +496,24 @@ def run_plan_test_cases(results, test_cases):
 
 def print_summary_table(results, total_time):
     """Print a formatted summary table of all test results."""
-    w = 100
+    w = 109
     print("\n" + "=" * w)
     print("SUMMARY")
     print("=" * w)
 
     # Header
-    print("{:<18} {:<25} {:<28} {:>6} {:>8} {:>8}".format(
-        "Domain", "Instance", "Config", "Status", "Time", "Memory"))
+    print("{:<18} {:<25} {:<28} {:>6} {:>8} {:>8} {:>8}".format(
+        "Domain", "Instance", "Config", "Status", "Time", "Search", "Memory"))
     print("-" * w)
 
     for r in results:
         status = "OK" if r.passed else "FAIL"
         time_str = "{:.2f}s".format(r.wall_time)
+        search_str = "{:.3f}s".format(r.search_time) if r.search_time is not None else "N/A"
         mem_str = "{:.1f}MB".format(r.peak_memory_kb / 1024) if r.peak_memory_kb else "N/A"
-        print("{:<18} {:<25} {:<28} {:>6} {:>8} {:>8}".format(
+        print("{:<18} {:<25} {:<28} {:>6} {:>8} {:>8} {:>8}".format(
             r.domain[:18], r.instance_name[:25], r.config[:28],
-            status, time_str, mem_str))
+            status, time_str, search_str, mem_str))
 
     print("-" * w)
     passes = sum(1 for r in results if r.passed)
@@ -445,12 +539,66 @@ def store_results(results, filepath):
     for r in results:
         data[r.name] = {
             'wall_time': r.wall_time,
+            'search_time': r.search_time,
             'peak_memory_kb': r.peak_memory_kb,
             'passed': r.passed,
         }
     with open(filepath, 'w') as f:
         json.dump(data, f, indent=2)
     print("Results saved to {}".format(filepath))
+
+
+def print_generator_comparison(results, generators):
+    """Print search time and peak memory of two successor generators side by
+    side, for each instance and search/heuristic configuration run with both.
+    Ratios are second / first generator."""
+    first, second = generators
+    by_config = {}
+    for r in results:
+        search_heuristic, _, generator = r.config.rpartition(',')
+        if generator in generators:
+            key = (r.domain, r.instance_name, search_heuristic)
+            by_config.setdefault(key, {})[generator] = r
+    rows = [(key, gens[first], gens[second]) for key, gens in by_config.items()
+            if first in gens and second in gens]
+    if not rows:
+        return
+
+    def fmt_time(t):
+        return "{:.3f}s".format(t) if t is not None else "N/A"
+
+    def fmt_mem(kb):
+        return "{:.1f}MB".format(kb / 1024) if kb else "N/A"
+
+    def fmt_ratio(a, b):
+        if not a or b is None:
+            return "N/A"
+        return "{:.2f}x".format(b / a) if b / a >= 0.01 else "<0.01x"
+
+    w = 109
+    print("\n" + "=" * w)
+    print("GENERATORS: {} vs. {} (search time: CPU time of the search component; "
+          "memory: peak of all processes)".format(first, second))
+    print("=" * w)
+    print("{:<50} {:^27}  {:^27}".format("", "Search time", "Memory"))
+    print("{:<18} {:<20} {:<10} {:>9} {:>9} {:>7}  {:>9} {:>9} {:>7}".format(
+        "Domain", "Instance", "Config", first[:9], second[:9], "Ratio",
+        first[:9], second[:9], "Ratio"))
+    print("-" * w)
+    for (domain, instance, search_heuristic), a, b in rows:
+        failed = "" if a.passed and b.passed else "  (FAILED)"
+        print("{:<18} {:<20} {:<10} {:>9} {:>9} {:>7}  {:>9} {:>9} {:>7}{}".format(
+            domain[:18], instance[:20], search_heuristic[:10],
+            fmt_time(a.search_time), fmt_time(b.search_time),
+            fmt_ratio(a.search_time, b.search_time),
+            fmt_mem(a.peak_memory_kb), fmt_mem(b.peak_memory_kb),
+            fmt_ratio(a.peak_memory_kb, b.peak_memory_kb), failed))
+    print("-" * w)
+    total_a = sum(a.search_time or 0 for _, a, _ in rows)
+    total_b = sum(b.search_time or 0 for _, _, b in rows)
+    print("{:<50} {:>9} {:>9} {:>7}".format(
+        "Total", fmt_time(total_a), fmt_time(total_b), fmt_ratio(total_a, total_b)))
+    print("=" * w)
 
 
 def compare_results(results, filepath):
@@ -547,12 +695,14 @@ if __name__ == '__main__':
     run_plan_test_cases(results, SPECIAL_PLAN_TESTS)
     run_plan_test_cases(results, heuristic_plan_tests)
     run_plan_test_cases(results, novelty_plan_tests)
+    run_plan_test_cases(results, NEGATION_PLAN_TESTS)
 
     for cli_test in CLI_OPTION_TESTS:
         results.append(run_cli_option_test(cli_test))
 
     total_time = timeit.default_timer() - start
     print_summary_table(results, total_time)
+    print_generator_comparison(results, COMPARED_GENERATORS)
 
     if args.store_results:
         store_results(results, args.store_results)
