@@ -14,6 +14,7 @@ class Axiom(object):
         self.num_external_parameters = num_external_parameters
         self.condition = condition
         self.uniquify_variables()
+        self.layer = None
 
     def dump(self):
         args = map(str, self.parameters[:self.num_external_parameters])

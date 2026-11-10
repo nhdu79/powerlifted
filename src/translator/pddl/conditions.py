@@ -300,7 +300,6 @@ class UniversalCondition(QuantifiedCondition):
 class ExistentialCondition(QuantifiedCondition):
     def _untyped(self, parts):
         type_literals = [par.get_atom() for par in self.parameters]
-        print(type_literals)
         return ExistentialCondition(self.parameters,
                                     [Conjunction(type_literals + parts)])
 

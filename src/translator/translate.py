@@ -80,12 +80,15 @@ def main():
     with timers.timing("Checking static predicates"):
         static_pred = static_predicates.check(task)
 
+    # TODO GR we need to replace more complicated goals with axioms (as in Fast
+    # Downward)
     assert isinstance(task.goal, pddl.Conjunction) or \
            isinstance(task.goal, pddl.Atom) or \
            isinstance(task.goal, pddl.NegatedAtom) or \
            isinstance(task.goal, pddl.MinimumKnowledgeOperator), \
         "Goal is not conjunctive."
 
+    # TODO GR this needs to be extended to conditional effects and axioms
     if options.ground_state_representation:
         with timers.timing("Generating complete initial state"):
             reachability.generate_overapproximated_reachable_atoms(task, g)

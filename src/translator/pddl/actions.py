@@ -22,11 +22,10 @@ class Action(object):
         self.effects = effects
         self.cost = cost
 
-        # TODO We are only dealing with STRIPS + object creation, so we do not uniquify variables.
-        # If we support fancier features (quantifiers, condition effects), we need to do so.
-        # However, as it is, this is not directly possible: you do not want to uniquify variables
-        # of object creation effects.
-        # self.uniquify_variables()
+        # TODO If we want to support object creation effects again, this needs to be
+        # adapted. You do not want to uniquify variables of object creation
+        # effects.
+        self.uniquify_variables()
 
     def __repr__(self):
         return "action_%s" % (self.name)
@@ -73,6 +72,9 @@ class Action(object):
         result.effects = [eff.untyped() for eff in self.effects]
         return result
 
+    # GR TODO: This needs to be adapted. After normalization, we are already
+    # quite close to the required format but will have negated preconditions
+    # (and axioms).
     @property
     def get_action_preconditions(self):
         """

@@ -12,4 +12,3 @@ class Predicate(object):
 
     def set_static(self):
         self.static = True
-        return
