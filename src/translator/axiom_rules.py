@@ -48,7 +48,7 @@ class AxiomCluster(object):
 
     def set_layer(self, layer):
         self.layer = layer
-        for _, axioms in self.axioms:
+        for _, axioms in self.axioms.items():
             for ax in axioms:
                 ax.layer = layer
 
@@ -130,8 +130,8 @@ def compute_axiom_layers(clusters, strategy):
     if strategy == "max":
         layer = 0
         for cluster in reversed(clusters):
-            cluster.layer = layer
+            cluster.set_layer(layer)
             layer += 1
     elif strategy == "min":
         for cluster in reversed(clusters):
-            cluster.layer = compute_single_cluster_layer(cluster)
+            cluster.set_layer(compute_single_cluster_layer(cluster))

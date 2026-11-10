@@ -152,6 +152,9 @@ def main():
     with timers.timing("Printing action schemas"):
         print_action_schemas(output, task, object_index, predicate_index, type_index)
 
+    with timers.timing("Printing axiom schemas"):
+        print_axiom_schemas(output, task, object_index, predicate_index, type_index)
+
     print("Total translation time:", timer.get_cpu_time())
 
     return
@@ -161,6 +164,22 @@ def transform_into_unit_cost(task):
     for action in task.actions:
         action.cost = 1
 
+def print_condition(cond, parameter_index, object_index, predicate_index,
+                    output):
+    assert isinstance(cond, pddl.Literal)
+    args_list = []
+    for x in cond.args:
+        if x in parameter_index:
+            # If it is a parameter
+            args_list += ['p', str(parameter_index[x])]
+        else:
+            # Otherwise, it is a constant
+            args_list += ['c', str(object_index[x])]
+    print(cond.predicate, predicate_index[cond.predicate],
+          int(cond.negated),
+          len(cond.args),
+          ' '.join(i for i in args_list),
+          file=output)
 
 def print_action_schemas(output, task, object_index, predicate_index, type_index):
     # Action schemas are defined as follow
@@ -269,6 +288,74 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
                   ' '.join(i for i in args_list),
                   file=output)
 
+def print_axiom_schemas(output, task, object_index, predicate_index, type_index):
+    # Axioms schemas are defined as follow
+    # - First, a canary and the number of axiom schemas
+    # - Then a list of axiom schemas, each one having
+    #    - axiom layer
+    #    - number of axiom parameters
+    #    - number of external parameters
+    #    - size of body
+    # - Then we list all parameters, one in each line, containing
+    #    - parameter name
+    #    - parameter index
+    #    - index of the parameter type
+    # - We then list all literals of the axiom schema body, one in each line
+    # printing the following attributes
+    #    - predicate name
+    #    - predicate index
+    #    - boolean variable saying if its negated or not
+    #    - number of predicate arguments
+    #    - list of pairs in the format (O, i), where O is 'c' if it is a
+    # constant and 'p' if it is a parameter. In the case it is a constant, 'i'
+    # is its object index; otherwise it is the parameter index
+    # - Next, we output similar information for the head
+    #    - predicate name
+    #    - predicate index
+    #    - number of predicate arguments
+    #    - list of pairs in the format (O, i), where O is 'c' if it is a
+    # constant, O is 'p' if it is a parameter, and O is 'f' if it is a fresh variable.
+    # In the case it is a constant, 'i' is its object index; otherwise it is the variable index.
+    task.axioms = [ax for ax in task.axioms if not isinstance(ax.condition,
+                                                              pddl.Falsity)]
+    task.axioms = sorted(task.axioms, key=lambda x: x.layer)
+    print("AXIOMS %d" % len(task.axioms), file=output)
+    for axiom in task.axioms:
+        axiom.dump()
+        parameter_index = {}
+        body = []
+        if (isinstance(axiom.condition, pddl.Literal) or
+            isinstance(axiom.condition, pddl.MinimumKnowledgeOperator)):
+            body = [axiom.condition]
+        else:
+            body = list(axiom.condition.parts)
+        assert all(isinstance(l, pddl.Literal) or isinstance(l, pddl.MinimumKnowledgeOperator)
+                   for l in body), "axiom not normalized: %r" % axiom
+
+        # precond = action.get_action_preconditions
+        print(axiom.layer, len(list(axiom.parameters)),
+              axiom.num_external_parameters, len(body))
+        for index, par in enumerate(axiom.parameters):
+            parameter_index[par.name] = index
+            print(par.name, index, type_index[par.type_name], file=output)
+        for cond in body:
+            print_condition(cond, parameter_index, object_index,
+                            predicate_index, output)
+
+        # head atom
+        args_list = []
+        for x in axiom.parameters:
+            if x.name in parameter_index:
+                args_list += ['p', str(parameter_index[x.name])]
+            else:
+                # Otherwise, it is a constant
+                args_list += ['c', str(object_index[x.name])]
+        print(axiom.name,
+              predicate_index[axiom.name],
+              len(axiom.parameters),
+              ' '.join(i for i in args_list),
+              file=output)
+        
 
 def print_goal(output, task, atom_index, object_index, predicate_index):
     # Print canary and the number of atoms in the goal, the output of each
