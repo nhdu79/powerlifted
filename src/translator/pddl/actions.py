@@ -39,7 +39,10 @@ class Action(object):
             eff.dump()
         print("Cost:")
         if (self.cost):
-            self.cost.dump()
+            if isinstance(self.cost, pddl.Increase):
+                self.cost.dump()
+            else:
+                print(self.cost)
         else:
             print("  None")
 
