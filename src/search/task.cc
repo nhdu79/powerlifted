@@ -105,6 +105,11 @@ void Task::initialize_action_schemas(const std::vector<ActionSchema> &action_lis
     action_schemas = action_list;
 }
 
+void Task::initialize_axiom_schemas(const std::vector<AxiomSchema> &axiom_list)
+{
+    axiom_schemas = axiom_list;
+}
+
 bool Task::is_goal(const DBState &state) const
 {
     for (int pred : goal.positive_nullary_goals) {

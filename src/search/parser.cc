@@ -1,5 +1,6 @@
 #include "parser.h"
 #include "action_schema.h"
+#include "axiom_schema.h"
 #include "goal_condition.h"
 #include "task.h"
 
@@ -224,6 +225,95 @@ void parse_action_schemas(Task &task, int number_action_schemas)
         actions.push_back(a);
     }
     task.initialize_action_schemas(actions);
+}
+
+void parse_axiom_schemas(Task &task, int number_axiom_schemas)
+{
+    vector<AxiomSchema> axioms;
+    for (int i = 0; i < number_axiom_schemas; ++i) {
+        int layer, args, external_args, body_size;
+        cin >> layer >> args >> external_args >> body_size;
+        vector<Parameter> parameters;
+        vector<Atom> body_literals;
+        vector<Atom> equality_conditions;
+        for (int j = 0; j < args; ++j) {
+            string param_name;
+            int index, type;
+            cin >> param_name >> index >> type;
+            parameters.emplace_back(param_name, index, type);
+        }
+        for (int j = 0; j < body_size; ++j) {
+            string cond_name;
+            int index;
+            bool negated;
+            int arguments_size;
+            cin >> cond_name >> index >> negated >> arguments_size;
+            if (utils::iequals(cond_name, "=")) {
+                int id1, id2;
+                char c, d;
+                cin >> c >> id1 >> d >> id2;
+
+                vector<Argument> arguments;
+                arguments.emplace_back(id1, c == 'c', false);
+                arguments.emplace_back(id2, d == 'c', false);
+                equality_conditions.emplace_back(
+                    std::move(arguments), std::move(cond_name), index, negated);
+            }
+            else {
+                vector<Argument> arguments;
+                for (int k = 0; k < arguments_size; ++k) {
+                    char c;
+                    int obj_index;
+                    cin >> c >> obj_index;
+                    if (c == 'c') {
+                        arguments.emplace_back(obj_index, true, false);
+                    }
+                    else if (c == 'p') {
+                        arguments.emplace_back(obj_index, false, false);
+                    }
+                    else {
+                        cerr << "Error while reading axiom schema number " << i
+                             << ". Argument is neither constant or "
+                                "object"
+                             << endl;
+                        utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+                    }
+                }
+                body_literals.emplace_back(
+                    std::move(arguments), std::move(cond_name), index, negated);
+            }
+        }
+        string head_predicate;
+        int head_index;
+        int head_arguments_size;
+        cin >> head_predicate >> head_index >> head_arguments_size;
+        vector<Argument> head_arguments;
+        for (int k = 0; k < head_arguments_size; ++k) {
+            char c;
+            int obj_index;
+            cin >> c >> obj_index;
+            if (c == 'c') {
+                head_arguments.emplace_back(obj_index, true, false);
+            }
+            else if (c == 'p') {
+                head_arguments.emplace_back(obj_index, false, false);
+            }
+            else if (c == 'f') {
+                head_arguments.emplace_back(obj_index, false, true);
+            }
+            else {
+                cerr << "Error while reading axiom schema number " << i
+                     << ". Argument is neither constant or "
+                        "object"
+                     << endl;
+                utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+            }
+        }
+        Atom head(std::move(head_arguments), std::move(head_predicate), head_index, false);
+        AxiomSchema a(i, layer, parameters, body_literals, equality_conditions, head);
+        axioms.push_back(a);
+    }
+    task.initialize_axiom_schemas(axioms);
 }
 
 void parse_goal(Task &task, int goal_size)

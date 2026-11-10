@@ -2,6 +2,7 @@
 #define SEARCH_TASK_H
 
 #include "action_schema.h"
+#include "axiom_schema.h"
 #include "goal_condition.h"
 #include "object.h"
 #include "predicate.h"
@@ -26,6 +27,7 @@
 class Task {
 
     std::vector<ActionSchema> action_schemas;
+    std::vector<AxiomSchema> axiom_schemas;
     GoalCondition goal;
     bool object_creation = false;
 
@@ -65,6 +67,7 @@ public:
                                std::unordered_set<int> negative_nullary_goals);
 
     void initialize_action_schemas(const std::vector<ActionSchema> &action_list);
+    void initialize_axiom_schemas(const std::vector<AxiomSchema> &axiom_list);
 
     const GoalCondition &get_goal() const {
         return goal;
