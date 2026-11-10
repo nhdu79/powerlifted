@@ -117,11 +117,33 @@ class Condition(object):
 
 
 class MinimumKnowledgeOperator(Condition): # MKO
+    # Defining __eq__ blocks inheritance of __hash__, so must set it explicitly.
+    __hash__ = Condition.__hash__
 
     def __init__(self, parts, negated):
         self.parts = tuple(parts)
         self.hash = hash((self.__class__, self.parts))
         self.negated = negated
+
+    def __eq__(self, other):
+        # Compare hash first for speed reasons.
+        return (self.hash == other.hash and
+                self.__class__ is other.__class__ and
+                self.negated == other.negated and
+                self.parts == other.parts)
+
+    def __ne__(self, other):
+        return not self == other
+
+    @property
+    def key(self):
+        return "MKO", self.parts, self.negated
+
+    def __lt__(self, other):
+        return self.key < other.key
+
+    def __le__(self, other):
+        return self.key <= other.key
 
     def uniquify_variables(self, type_map, renamings={}):
         return self.__class__([part.uniquify_variables(type_map, renamings)
