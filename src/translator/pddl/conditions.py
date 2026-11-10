@@ -86,6 +86,10 @@ class Condition(object):
     def collect_mkos(self, result):
         for part in self.parts:
             part.collect_mkos(result)
+    
+    def collect_objects(self, result):
+        for part in self.parts:
+            part.collect_objects(result)
 
     def free_variables(self):
         result = set()
@@ -355,6 +359,9 @@ class Literal(Condition):
 
     def collect_predicates(self, result):
         result.add(self.predicate)
+
+    def collect_objects(self, result):
+        result.update(o for o in self.args if o[0] != "?")
 
     def change_parts(self, parts):
         return self

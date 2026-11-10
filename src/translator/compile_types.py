@@ -45,61 +45,52 @@ def compile_into_unary_predicates(task):
         name_to_type_pred[pred_name] = task.predicates[-1]
     return
 
-
-def replace_type_in_mko(mko, graph):
-    mko.untyped()
-
 def add_conditions_to_actions(task, graph):
     """Add unary type conditions to each action schema according to their
     parameters.
 
     """
     for action in task.actions:
-        obj_in_action = set()
-        for param in action.parameters:
-            name = param.name
-            param_type = param.type_name
-            obj_in_action.add((param_type, name))
-        # Loop over preconditions and effects, collect all parameters
-        # and constants, and add types to that in the precondition
-        precond = action.get_action_preconditions
-        for cond in precond:
-            if isinstance(cond, pddl.conditions.MinimumKnowledgeOperator):
-                replace_type_in_mko(cond, graph)
-                continue
-            assert isinstance(cond, pddl.Literal)
-            for arg in cond.args:
-                name = arg
-                param_type = next(
-                    (x.type_name for x in action.parameters if x.name == arg),
-                    None)
-                if param_type is None:
-                    # If the type is none, then it is not a parameter and
-                    # it must be constant.  THus, we search for its type in the
-                    # obj list.
-                    param_type = next(
-                        (x.type_name for x in task.objects if x.name == arg),
-                        None)
-                obj_in_action.add((param_type, name))
-        literals_in_effects = action.get_parameters_in_effects
-        for l in literals_in_effects:
-            name = l
-            param_type = next(
-                (x.type_name for x in action.parameters if x.name == l), None)
-            if param_type is None:
-                # If the type is none, then it is not a parameter and
-                # it must be constant.  Thus, we search for its type in the
-                # obj list.
-                param_type = next(
-                    (x.type_name for x in task.objects if x.name == l), None)
-            obj_in_action.add((param_type, name))
+        # types set by axiom parameters (covering the variables)
+        terms_in_action = set((param.type_name, param.name) for param in action.parameters)
 
-        action.transform_precondition_into_list()
-        for obj in obj_in_action:
-            param_type = obj[0]
-            name = obj[1]
-            action.precondition.add_condition(
-                pddl.Atom(_get_type_predicate_name(param_type), [name]))
+        # types induced by objects occuring in the precondition
+        objects = set()
+        action.precondition.collect_objects(objects)
+
+        for effect in action.effects:
+            effect.condition.collect_objects(objects)
+        objects.update(arg for arg in effect.literal.args if arg[0] != "?")
+
+        if objects:
+            type_by_obj_name = {x.name: x.type_name for x in task.objects}
+            terms_in_action.update((type_by_obj_name[name], name) for name in objects)
+
+        condition = [pddl.Atom(_get_type_predicate_name(param_type), [name])
+                                for param_type, name in terms_in_action]
+        condition.append(action.precondition)
+        action.precondition = pddl.Conjunction(condition).simplified()
+
+def add_conditions_to_axioms(task, graph):
+    """Add unary type conditions to each axiom schema according to their
+    parameters.
+
+    """
+    for axiom in task.axioms:
+        # types set by axiom parameters (covering the variables)
+        terms_in_axiom = set((param.type_name, param.name) for param in axiom.parameters)
+
+        # types induced by objects occuring in the body
+        objects = set()
+        axiom.condition.collect_objects(objects)
+        if objects:
+            type_by_obj_name = {x.name: x.type_name for x in task.objects}
+            terms_in_axiom.update((type_by_obj_name[name], name) for name in objects)
+
+        condition = [pddl.Atom(_get_type_predicate_name(param_type), [name])
+                                for param_type, name in terms_in_axiom]
+        condition.append(axiom.condition)
+        axiom.condition = pddl.Conjunction(condition).simplified()
     return
 
 def add_effects_to_actions(task, graph):
@@ -197,6 +188,7 @@ def compile_types(task):
     graph = TypesGraph(task.types)
     compile_into_unary_predicates(task)
     add_conditions_to_actions(task, graph)
+    add_conditions_to_axioms(task, graph)
     add_effects_to_actions(task, graph)
     adjust_initial_state(task, graph)
     return graph
