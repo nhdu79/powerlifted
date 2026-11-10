@@ -17,6 +17,7 @@ def python_version_supported():
 if not python_version_supported():
     sys.exit("Error: Translator only supports Python >= 2.7 and Python >= 3.2.")
 
+import axiom_rules
 import compile_types
 import complete_state
 import normalize
@@ -71,6 +72,10 @@ def main():
 
     with timers.timing("Compiling types into unary predicates"):
         g = compile_types.compile_types(task)
+
+    with timers.timing("Computing axiom stratification"):
+        axiom_layers = axiom_rules.handle_axioms(task.axioms,
+                                                 options.layer_strategy)
 
     with timers.timing("Checking static predicates"):
         static_pred = static_predicates.check(task)
