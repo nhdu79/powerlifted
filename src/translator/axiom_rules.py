@@ -85,6 +85,10 @@ def compute_clusters(axioms):
     # Compute mapping from predicates to their clusters.
     predicate_to_cluster = {}
     for cluster in clusters:
+        if len(cluster.predicates) > 1:
+            # The search component has no fixed point computation for the
+            # different axioms stata.
+            raise NotImplementedError("Cyclic axiom dependencies not supported")
         for predicate in cluster.predicates:
             predicate_to_cluster[predicate] = cluster
 
@@ -99,6 +103,10 @@ def compute_clusters(axioms):
             to_cluster = predicate_to_cluster[to_pred]
             if from_cluster is not to_cluster:
                 from_cluster.positive_children.add(to_cluster)
+            else:
+                # The search component has no fixed point computation for the
+                # different axioms stata.
+                raise NotImplementedError("Cyclic axiom dependencies not supported")
 
     # Create links between clusters (negative dependencies).
     for from_pred, depends_on in dependencies.negative_dependencies.items():
