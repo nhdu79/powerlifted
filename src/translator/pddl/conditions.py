@@ -115,6 +115,21 @@ class Condition(object):
                 return True
         return False
 
+    def get_literal_tuple(self):
+        """This should only be called on conditions that are a conjunction
+           of literals, a single literal or Truth.
+        """
+        assert not isinstance(self, Falsity)
+        assert not isinstance(self, QuantifiedCondition)
+
+        conds = ()
+        if isinstance(self, Literal):
+            conds = (self, )
+        else:
+            conds = self.parts
+        assert all(isinstance(l, Literal) for l in conds), "condition not normalized: %r" % self
+        return conds
+
 
 class MinimumKnowledgeOperator(Condition): # MKO
     # Defining __eq__ blocks inheritance of __hash__, so must set it explicitly.

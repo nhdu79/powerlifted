@@ -3,23 +3,20 @@
 #include <utility>
 
 ActionSchema::ActionSchema(std::string name, int index, int cost,
+                           int num_external_parameters,
                            std::vector<Parameter> parameters,
                            std::vector<FreshVariable> fresh_variables,
                            std::vector<Atom> precondition,
-                           std::vector<Atom> effects,
+                           std::vector<ConditionalEffect> effects,
                            std::vector<Atom> equality_precondition,
                            std::vector<bool> positive_nullary_precond,
-                           std::vector<bool> negative_nullary_precond,
-                           std::vector<bool> positive_nullary_effects,
-                           std::vector<bool> negative_nullary_effects) :
+                           std::vector<bool> negative_nullary_precond) :
         name(std::move(name)), index(index), cost(cost),
+        num_external_parameters(num_external_parameters),
         parameters(std::move(parameters)),
         fresh_variables(std::move(fresh_variables)),
         precondition(std::move(precondition)),
         effects(std::move(effects)),
         equality_precondition(std::move(equality_precondition)),
         positive_nullary_precond(std::move(positive_nullary_precond)),
-        negative_nullary_precond(std::move(negative_nullary_precond)),
-        positive_nullary_effects(std::move(positive_nullary_effects)),
-        negative_nullary_effects(std::move(negative_nullary_effects)) {}
-
+        negative_nullary_precond(std::move(negative_nullary_precond)) {}

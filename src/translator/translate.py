@@ -7,6 +7,7 @@ import sys
 import traceback
 
 from collections import defaultdict
+from itertools import chain
 
 
 def python_version_supported():
@@ -164,22 +165,53 @@ def transform_into_unit_cost(task):
     for action in task.actions:
         action.cost = 1
 
-def print_condition(cond, parameter_index, object_index, predicate_index,
-                    output):
-    assert isinstance(cond, pddl.Literal)
+
+def print_literal(literal, output, parameter_index, object_index, predicate_index,
+                  fresh_var_names=()):
     args_list = []
-    for x in cond.args:
+    for x in literal.args:
         if x in parameter_index:
-            # If it is a parameter
-            args_list += ['p', str(parameter_index[x])]
+            if x in fresh_var_names:
+                # If it is a fresh variable
+                args_list += ['f', str(parameter_index[x])]
+            else:
+                # If it is a parameter
+                args_list += ['p', str(parameter_index[x])]
         else:
             # Otherwise, it is a constant
             args_list += ['c', str(object_index[x])]
-    print(cond.predicate, predicate_index[cond.predicate],
-          int(cond.negated),
-          len(cond.args),
-          ' '.join(i for i in args_list),
+    print(literal.predicate, predicate_index[literal.predicate],
+          int(literal.negated),
+          len(literal.args),
+          ' '.join(args_list),
           file=output)
+
+
+def print_condition(cond, parameter_index, object_index, predicate_index,
+                    output):
+    """Assumes that cond is a literal, conjunction of literals or truth."""
+    conds = sorted(cond.get_literal_tuple())
+    print(len(conds), file=output)
+    for literal in conds:
+        print_literal(literal, output, parameter_index, object_index,
+                      predicate_index)
+
+
+def print_parameters_and_get_index(parameters, type_index, output):
+    """ List all parameters, one in each line, containing
+        - parameter name
+        - parameter index
+        - index of the parameter type
+        
+        Returns a dictionary with the parameter indices.
+    """
+    parameter_index = {}
+    for index, par in enumerate(parameters):
+        assert par.name not in parameter_index
+        parameter_index[par.name] = index
+        print(par.name, index, type_index[par.type_name], file=output)
+
+    return parameter_index
 
 def print_action_schemas(output, task, object_index, predicate_index, type_index):
     # Action schemas are defined as follow
@@ -188,9 +220,8 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
     #    - action name
     #    - action cost
     #    - number of action parameters
+    #	 - number of external parameters (cf. initializer of pddl.Action)
     #    - number of fresh variables (i.e., variables that will be instantiated by new objects)
-    #    - size of precondition
-    #    - size of effect
     # - Then we list all parameters, one in each line, containing
     #    - parameter name
     #    - parameter index
@@ -199,29 +230,36 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
     #    - fresh variable name
     #    - index
     #    - index of its type
+    # - Next we print the size of the precondition
     # - We then list all precondition of the action schema. one in each line
-    # printing the following attributes
+    #   printing the following attributes
     #    - predicate name
     #    - predicate index
     #    - boolean variable saying if its negated or not
     #    - number of predicate arguments
     #    - list of pairs in the format (O, i), where O is 'c' if it is a
-    # constant and 'p' if it is a parameter. In the case it is a constant, 'i'
-    # is its object index; otherwise it is the parameter index
+    #      constant and 'p' if it is a parameter. In the case it is a constant,
+    #      'i' is its object index; otherwise it is the parameter index
+    # - Next, we print the number of effects, followed by the information for
+    #   each effect as follows:
     # - Next, we output similar information for the effects
-    #    - predicate name
+    #    - predicate name of the affected literal
     #    - predicate index
     #    - boolean variable saying if its negated or not
     #    - number of predicate arguments
     #    - list of pairs in the format (O, i), where O is 'c' if it is a
-    # constant, O is 'p' if it is a parameter, and O is 'f' if it is a fresh variable.
-    # In the case it is a constant, 'i' is its object index; otherwise it is the variable index.
+    #      constant, O is 'p' if it is a parameter, and O is 'f' if it is a fresh variable.
+    #      In the case it is a constant, 'i' is its object index; otherwise it is the variable index.
+    #    - number of effect conditions
+    #    - We then print all effect conditions, one in each line in the same
+    #      format as the action preconditions
 
-    task.actions = list(task.actions)
+
+    task.actions = [a for a in task.actions if not isinstance(a.precondition,
+                                                              pddl.Falsity)]
     task.actions.sort(key=lambda ac: ac.name)
     print("ACTION-SCHEMAS %d" % len(task.actions), file=output)
     for action in task.actions:
-        parameter_index = {}
         if action.cost is None:
             action.cost = 0
         if isinstance(action.cost, pddl.Increase):
@@ -229,7 +267,6 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
                 action.cost = action.cost.expression.value
             else:
                 action.cost = 1
-        precond = action.get_action_preconditions
         assert isinstance(action.effects, list)
 
         fresh_vars = set()
@@ -240,122 +277,72 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
                 fresh_var_names.add(v.name)
         fresh_vars = list(fresh_vars)
         fresh_vars.sort()
+        print(action.name, action.cost, len(list(action.parameters)),
+              action.num_external_parameters, len(fresh_vars), file=output)
+        params = chain(action.parameters, fresh_vars) # generator; only use once
+        parameter_index = print_parameters_and_get_index(params, type_index,
+                                                         output)
+        print_condition(action.precondition, parameter_index, object_index,
+                        predicate_index, output)
 
-        print(action.name, action.cost, len(list(action.parameters)), len(fresh_vars),
-              len(precond), len(list(action.effects)), file=output)
-        for index, par in enumerate(action.parameters):
-            parameter_index[par.name] = index
-            print(par.name, index, type_index[par.type_name], file=output)
-        for v in fresh_vars:
-            index = len(parameter_index)
-            parameter_index[v.name] = index
-            print(v.name, index, type_index[v.type_name], file=output)
-        for cond in sorted(precond):
-            assert isinstance(cond, pddl.Literal)
-            args_list = []
-            for x in cond.args:
-                if x in parameter_index:
-                    # If it is a parameter
-                    args_list += ['p', str(parameter_index[x])]
-                else:
-                    # Otherwise, it is a constant
-                    args_list += ['c', str(object_index[x])]
-            print(cond.predicate, predicate_index[cond.predicate],
-                  int(cond.negated),
-                  len(cond.args),
-                  ' '.join(i for i in args_list),
-                  file=output)
         # Delete effects first to guarantee add-after-delete semantics
         action.effects.sort(key=lambda x: int(x.literal.negated), reverse=True)
+        print(len(action.effects), file=output)
         for eff in action.effects:
             assert isinstance(eff, pddl.Effect)
-            args_list = []
-            for x in eff.literal.args:
-                if x in parameter_index:
-                    if x in fresh_var_names:
-                        # If it is a fresh variable
-                        args_list += ['f', str(parameter_index[x])]
-                    else:
-                        # If it is a parameter
-                        args_list += ['p', str(parameter_index[x])]
-                else:
-                    # Otherwise, it is a constant
-                    args_list += ['c', str(object_index[x])]
-            print(eff.literal.predicate,
-                  predicate_index[eff.literal.predicate],
-                  int(eff.literal.negated),
-                  len(eff.literal.args),
-                  ' '.join(i for i in args_list),
-                  file=output)
+            if eff.parameters:
+                raise NotImplementedError("Your task has an universal effect. "
+                                          "These are not supported.")
+            print_literal(eff.literal, output, parameter_index, object_index,
+                          predicate_index, fresh_var_names)
+            print_condition(eff.condition, parameter_index, object_index,
+                            predicate_index, output)
+
 
 def print_axiom_schemas(output, task, object_index, predicate_index, type_index):
     # Axioms schemas are defined as follow
     # - First, a canary and the number of axiom schemas
-    # - Then a list of axiom schemas, each one having
+    # - Then a list of axiom schemas (with increasing axiom layer), each one having
     #    - axiom layer
     #    - number of axiom parameters
     #    - number of external parameters
-    #    - size of body
     # - Then we list all parameters, one in each line, containing
     #    - parameter name
     #    - parameter index
     #    - index of the parameter type
-    # - We then list all literals of the axiom schema body, one in each line
-    # printing the following attributes
+    # - Next, we output the head (one line) with attributes
+    #    - predicate name
+    #    - predicate index
+    #    - number 1 (stating that it is not negated)
+    #    - number of predicate arguments
+    #    - list of pairs in the format (O, i), where O is 'c' if it is a
+    #      constant, O is 'p' if it is a parameter, and O is 'f' if it is a fresh variable.
+    #      In the case it is a constant, 'i' is its object index; otherwise it is the variable index.
+    # - We then print the number of literals of the axiom schema body, followed
+    #   by all literals (one per line) with the following attributes:
     #    - predicate name
     #    - predicate index
     #    - boolean variable saying if its negated or not
     #    - number of predicate arguments
     #    - list of pairs in the format (O, i), where O is 'c' if it is a
-    # constant and 'p' if it is a parameter. In the case it is a constant, 'i'
-    # is its object index; otherwise it is the parameter index
-    # - Next, we output similar information for the head
-    #    - predicate name
-    #    - predicate index
-    #    - number of predicate arguments
-    #    - list of pairs in the format (O, i), where O is 'c' if it is a
-    # constant, O is 'p' if it is a parameter, and O is 'f' if it is a fresh variable.
-    # In the case it is a constant, 'i' is its object index; otherwise it is the variable index.
+    #      constant and 'p' if it is a parameter. In the case it is a constant, 'i'
+    #      is its object index; otherwise it is the parameter index
     task.axioms = [ax for ax in task.axioms if not isinstance(ax.condition,
                                                               pddl.Falsity)]
     task.axioms = sorted(task.axioms, key=lambda x: x.layer)
     print("AXIOMS %d" % len(task.axioms), file=output)
     for axiom in task.axioms:
-        axiom.dump()
-        parameter_index = {}
-        body = []
-        if (isinstance(axiom.condition, pddl.Literal) or
-            isinstance(axiom.condition, pddl.MinimumKnowledgeOperator)):
-            body = [axiom.condition]
-        else:
-            body = list(axiom.condition.parts)
-        assert all(isinstance(l, pddl.Literal) or isinstance(l, pddl.MinimumKnowledgeOperator)
-                   for l in body), "axiom not normalized: %r" % axiom
-
-        # precond = action.get_action_preconditions
         print(axiom.layer, len(list(axiom.parameters)),
-              axiom.num_external_parameters, len(body))
-        for index, par in enumerate(axiom.parameters):
-            parameter_index[par.name] = index
-            print(par.name, index, type_index[par.type_name], file=output)
-        for cond in body:
-            print_condition(cond, parameter_index, object_index,
-                            predicate_index, output)
-
-        # head atom
-        args_list = []
-        for x in axiom.parameters:
-            if x.name in parameter_index:
-                args_list += ['p', str(parameter_index[x.name])]
-            else:
-                # Otherwise, it is a constant
-                args_list += ['c', str(object_index[x.name])]
-        print(axiom.name,
-              predicate_index[axiom.name],
-              len(axiom.parameters),
-              ' '.join(i for i in args_list),
-              file=output)
+              axiom.num_external_parameters, file=output)
+        parameter_index = print_parameters_and_get_index(axiom.parameters,
+                                                         type_index, output)
+        head = pddl.Atom(axiom.name, [p.name for p in axiom.parameters])
+        print_literal(head, output, parameter_index, object_index,
+                      predicate_index)
         
+        print_condition(axiom.condition, parameter_index, object_index,
+                        predicate_index, output)
+
 
 def print_goal(output, task, atom_index, object_index, predicate_index):
     # Print canary and the number of atoms in the goal, the output of each
@@ -377,6 +364,7 @@ def print_goal(output, task, atom_index, object_index, predicate_index):
             # negated in the goal condition or not, the number of arguments
             # in the predicate, and the indices of the objects instantiating
             # the arguments.
+            # MKOs should already have been replaced with predicates earlier.
             print(atom, predicate_index[atom.predicate], int(atom.negated),
                   len(atom.args),
                   ' '.join(str(object_index[o]) for o in atom.args),

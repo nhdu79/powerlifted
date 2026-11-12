@@ -70,7 +70,6 @@ bool parse(Task &task, const ifstream &in)
 
     // ************************************************************************
     // TODO:
-    // * Parse axioms
     // * Apply axioms to initial state (maybe a separate part for derived
     //   predicates?)
     // ************************************************************************
@@ -92,8 +91,78 @@ bool parse(Task &task, const ifstream &in)
     }
     cout << "Total number of action schemas: " << number_action_schemas << endl;
     parse_action_schemas(task, number_action_schemas);
-
+    int number_axiom_schemas;
+    cin >> canary >> number_axiom_schemas;
+    if (not is_next_section_correct(canary, "AXIOMS")) {
+        return false;
+    }
+    cout << "Total number of axioms: " << number_axiom_schemas << endl;
+    parse_axiom_schemas(task, number_axiom_schemas);
     return true;
+}
+
+Atom parse_literal() {
+    string predicate;
+    int predicate_index;
+    bool negated;
+    int arguments_size;
+    cin >> predicate >> predicate_index >> negated >> arguments_size;
+    vector<Argument> arguments;
+    for (int k = 0; k < arguments_size; ++k) {
+        char c;
+        int obj_index;
+        cin >> c >> obj_index;
+        if (c == 'c') {
+            arguments.emplace_back(obj_index, true, false);
+        }
+        else if (c == 'p') {
+            arguments.emplace_back(obj_index, false, false);
+        }
+        else if (c == 'f') {
+            arguments.emplace_back(obj_index, false, true);
+        }
+        else {
+            cerr << "Error while reading literal. " 
+                 << "Argument is neither constant nor object."
+                 << endl;
+            utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+        }
+    }
+    return Atom(std::move(arguments), std::move(predicate), predicate_index, negated);
+}
+
+void parse_condition(int num, Task &task, vector<Atom>& conditions,
+    vector<Atom>& equality_conditions, vector<bool> &positive_nul_cond,
+    vector<bool> &negative_nul_cond) {
+    for (int j = 0; j < num; ++j) {
+        string cond_name;
+        int index;
+        bool negated;
+        int arguments_size;
+        cin >> cond_name >> index >> negated >> arguments_size;
+        if (arguments_size == 0) {
+            assert(task.nullary_predicates.find(index) != task.nullary_predicates.end());
+            if (!negated)
+                positive_nul_cond[index] = true;
+            else
+                negative_nul_cond[index] = true;
+        }
+        else if (utils::iequals(cond_name, "=")) {
+            int id1, id2;
+            char c, d;
+            cin >> c >> id1 >> d >> id2;
+
+            vector<Argument> arguments;
+            arguments.emplace_back(id1, c == 'c', false);
+            arguments.emplace_back(id2, d == 'c', false);
+            equality_conditions.emplace_back(
+                std::move(arguments), std::move(cond_name), index, negated);
+        }
+        else {
+            Atom literal = parse_literal(); // TODO do not allow f
+            conditions.push_back(std::move(literal));
+        }
+    }
 }
 
 void parse_action_schemas(Task &task, int number_action_schemas)
@@ -101,15 +170,12 @@ void parse_action_schemas(Task &task, int number_action_schemas)
     vector<ActionSchema> actions;
     for (int i = 0; i < number_action_schemas; ++i) {
         string name;
-        int cost, args, num_fresh_vars, precond_size, eff_size;
-        cin >> name >> cost >> args >> num_fresh_vars >> precond_size >> eff_size;
+        int cost, args, num_external_args, num_fresh_vars, precond_size, eff_size;
+        cin >> name >> cost >> args >> num_external_args >> num_fresh_vars;
+       
+        // parse parameters 
         vector<Parameter> parameters;
         vector<FreshVariable> fresh_vars;
-        vector<Atom> preconditions, equality_preconditions, effects;
-        vector<bool> positive_nul_precond(task.predicates.size(), false),
-            negative_nul_precond(task.predicates.size(), false),
-            positive_nul_eff(task.predicates.size(), false),
-            negative_nul_eff(task.predicates.size(), false);
         for (int j = 0; j < args; ++j) {
             string param_name;
             int index, type;
@@ -124,107 +190,47 @@ void parse_action_schemas(Task &task, int number_action_schemas)
             cin >> var_name >> index >> type;
             fresh_vars.emplace_back(var_name, index, false);
         }
-        for (int j = 0; j < precond_size; ++j) {
-            string precond_name;
-            int index;
-            bool negated;
-            int arguments_size;
-            cin >> precond_name >> index >> negated >> arguments_size;
-            if (arguments_size == 0) {
-                assert(task.nullary_predicates.find(index) != task.nullary_predicates.end());
-                if (!negated)
-                    positive_nul_precond[index] = true;
-                else
-                    negative_nul_precond[index] = true;
-            }
-            else if (utils::iequals(precond_name, "=")) {
-                int id1, id2;
-                char c, d;
-                cin >> c >> id1 >> d >> id2;
 
-                vector<Argument> arguments;
-                arguments.emplace_back(id1, c == 'c', false);
-                arguments.emplace_back(id2, d == 'c', false);
-                equality_preconditions.emplace_back(
-                    std::move(arguments), std::move(precond_name), index, negated);
-            }
-            else {
-                vector<Argument> arguments;
-                for (int k = 0; k < arguments_size; ++k) {
-                    char c;
-                    int obj_index;
-                    cin >> c >> obj_index;
-                    if (c == 'c') {
-                        arguments.emplace_back(obj_index, true, false);
-                    }
-                    else if (c == 'p') {
-                        arguments.emplace_back(obj_index, false, false);
-                    }
-                    else {
-                        cerr << "Error while reading action schema " << name
-                             << ". Argument is neither constant or "
-                                "object"
-                             << endl;
-                        utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
-                    }
-                }
-                preconditions.emplace_back(
-                    std::move(arguments), std::move(precond_name), index, negated);
-            }
-        }
+        // parse precondition
+        cin >> precond_size;
+        vector<Atom> preconditions, equality_preconditions;
+        vector<bool> positive_nul_precond(task.predicates.size(), false);
+        vector<bool> negative_nul_precond(task.predicates.size(), false);
+        parse_condition(precond_size, task, preconditions,
+                        equality_preconditions, positive_nul_precond, negative_nul_precond);
+       
+        // parse effects 
+        cin >> eff_size;
+        vector<ConditionalEffect> effects;
+        int effcond_size;
         for (int j = 0; j < eff_size; ++j) {
-            string eff_name;
-            int index;
-            bool negated;
-            int arguments_size;
-            cin >> eff_name >> index >> negated >> arguments_size;
-            vector<Argument> arguments;
-            if (arguments_size == 0) {
-                assert(task.nullary_predicates.find(index) != task.nullary_predicates.end());
-                if (!negated)
-                    positive_nul_eff[index] = true;
-                else
-                    negative_nul_eff[index] = true;
-                continue;
-            }
-            for (int k = 0; k < arguments_size; ++k) {
-                char c;
-                int obj_index;
-                cin >> c >> obj_index;
-                if (c == 'c') {
-                    arguments.emplace_back(obj_index, true, false);
-                }
-                else if (c == 'p') {
-                    arguments.emplace_back(obj_index, false, false);
-                }
-                else if (c == 'f') {
-                    arguments.emplace_back(obj_index, false, true);
-                }
-                else {
-                    cerr << "Error while reading action schema " << name
-                         << ". Argument is neither constant or "
-                            "object"
-                         << endl;
-                    utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
-                }
-            }
-            effects.emplace_back(std::move(arguments), std::move(eff_name), index, negated);
+            // TODO: adapt to parse conditional effects instead
+            Atom affected = parse_literal();
+            cin >> effcond_size;
+            vector<Atom> conditions, equality_conditions;
+            vector<bool> positive_nul_cond(task.predicates.size(), false);
+            vector<bool> negative_nul_cond(task.predicates.size(), false);
+            parse_condition(effcond_size, task, conditions,
+                            equality_conditions, positive_nul_cond, negative_nul_cond);
+
+            effects.emplace_back(std::move(conditions), std::move(equality_conditions),
+                                 std::move(positive_nul_cond), std::move(negative_nul_cond),
+                                 std::move(affected));
         }
-        ActionSchema a(name,
+        ActionSchema a(std::move(name),
                        i,
                        cost,
-                       parameters,
-                       fresh_vars,
-                       preconditions,
-                       effects,
-                       equality_preconditions,
-                       positive_nul_precond,
-                       negative_nul_precond,
-                       positive_nul_eff,
-                       negative_nul_eff);
-        actions.push_back(a);
+                       num_external_args,
+                       std::move(parameters),
+                       std::move(fresh_vars),
+                       std::move(preconditions),
+                       std::move(effects),
+                       std::move(equality_preconditions),
+                       std::move(positive_nul_precond),
+                       std::move(negative_nul_precond));
+        actions.push_back(std::move(a));
     }
-    task.initialize_action_schemas(actions);
+    task.initialize_action_schemas(actions); // TODO move?
 }
 
 void parse_axiom_schemas(Task &task, int number_axiom_schemas)
@@ -232,16 +238,21 @@ void parse_axiom_schemas(Task &task, int number_axiom_schemas)
     vector<AxiomSchema> axioms;
     for (int i = 0; i < number_axiom_schemas; ++i) {
         int layer, args, external_args, body_size;
-        cin >> layer >> args >> external_args >> body_size;
+        cin >> layer >> args >> external_args;
+
         vector<Parameter> parameters;
-        vector<Atom> body_literals;
-        vector<Atom> equality_conditions;
         for (int j = 0; j < args; ++j) {
             string param_name;
             int index, type;
             cin >> param_name >> index >> type;
             parameters.emplace_back(param_name, index, type);
         }
+
+        Atom head = parse_literal();
+        
+        cin >> body_size;
+        vector<Atom> body_literals;
+        vector<Atom> equality_conditions;
         for (int j = 0; j < body_size; ++j) {
             string cond_name;
             int index;
@@ -283,35 +294,7 @@ void parse_axiom_schemas(Task &task, int number_axiom_schemas)
                     std::move(arguments), std::move(cond_name), index, negated);
             }
         }
-        string head_predicate;
-        int head_index;
-        int head_arguments_size;
-        cin >> head_predicate >> head_index >> head_arguments_size;
-        vector<Argument> head_arguments;
-        for (int k = 0; k < head_arguments_size; ++k) {
-            char c;
-            int obj_index;
-            cin >> c >> obj_index;
-            if (c == 'c') {
-                head_arguments.emplace_back(obj_index, true, false);
-            }
-            else if (c == 'p') {
-                head_arguments.emplace_back(obj_index, false, false);
-            }
-            else if (c == 'f') {
-                head_arguments.emplace_back(obj_index, false, true);
-            }
-            else {
-                cerr << "Error while reading axiom schema number " << i
-                     << ". Argument is neither constant or "
-                        "object"
-                     << endl;
-                utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
-            }
-        }
-        Atom head(std::move(head_arguments), std::move(head_predicate), head_index, false);
-        AxiomSchema a(i, layer, parameters, body_literals, equality_conditions, head);
-        axioms.push_back(a);
+        axioms.emplace_back(i, layer, std::move(parameters), std::move(body_literals), std::move(equality_conditions), std::move(head));
     }
     task.initialize_axiom_schemas(axioms);
 }
