@@ -85,12 +85,13 @@ def main():
     # Downward)
     assert isinstance(task.goal, pddl.Conjunction) or \
            isinstance(task.goal, pddl.Atom) or \
-           isinstance(task.goal, pddl.NegatedAtom) or \
-           isinstance(task.goal, pddl.MinimumKnowledgeOperator), \
+           isinstance(task.goal, pddl.NegatedAtom), \
         "Goal is not conjunctive."
 
     # TODO GR this needs to be extended to conditional effects and axioms
     if options.ground_state_representation:
+        raise NotImplementedError("'Ground state representation' is currently "
+                                  "not supported. See TODO in translate.py")
         with timers.timing("Generating complete initial state"):
             reachability.generate_overapproximated_reachable_atoms(task, g)
 

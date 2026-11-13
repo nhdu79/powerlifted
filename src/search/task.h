@@ -66,8 +66,8 @@ public:
                                std::unordered_set<int> nullary_goals,
                                std::unordered_set<int> negative_nullary_goals);
 
-    void initialize_action_schemas(const std::vector<ActionSchema> &action_list);
-    void initialize_axiom_schemas(const std::vector<AxiomSchema> &axiom_list);
+    void initialize_action_schemas(std::vector<ActionSchema> &&action_list);
+    void initialize_axiom_schemas(std::vector<AxiomSchema> &&axiom_list);
 
     const GoalCondition &get_goal() const {
         return goal;

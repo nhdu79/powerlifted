@@ -101,7 +101,7 @@ bool parse(Task &task, const ifstream &in)
     return true;
 }
 
-Atom parse_literal() {
+Atom parse_literal(bool allow_f = true) {
     string predicate;
     int predicate_index;
     bool negated;
@@ -118,7 +118,7 @@ Atom parse_literal() {
         else if (c == 'p') {
             arguments.emplace_back(obj_index, false, false);
         }
-        else if (c == 'f') {
+        else if (allow_f && c == 'f') {
             arguments.emplace_back(obj_index, false, true);
         }
         else {
@@ -159,7 +159,7 @@ void parse_condition(int num, Task &task, vector<Atom>& conditions,
                 std::move(arguments), std::move(cond_name), index, negated);
         }
         else {
-            Atom literal = parse_literal(); // TODO do not allow f
+            Atom literal = parse_literal(false);
             conditions.push_back(std::move(literal));
         }
     }
@@ -204,7 +204,6 @@ void parse_action_schemas(Task &task, int number_action_schemas)
         vector<ConditionalEffect> effects;
         int effcond_size;
         for (int j = 0; j < eff_size; ++j) {
-            // TODO: adapt to parse conditional effects instead
             Atom affected = parse_literal();
             cin >> effcond_size;
             vector<Atom> conditions, equality_conditions;
@@ -230,7 +229,7 @@ void parse_action_schemas(Task &task, int number_action_schemas)
                        std::move(negative_nul_precond));
         actions.push_back(std::move(a));
     }
-    task.initialize_action_schemas(actions); // TODO move?
+    task.initialize_action_schemas(std::move(actions));
 }
 
 void parse_axiom_schemas(Task &task, int number_axiom_schemas)
@@ -248,7 +247,7 @@ void parse_axiom_schemas(Task &task, int number_axiom_schemas)
             parameters.emplace_back(param_name, index, type);
         }
 
-        Atom head = parse_literal();
+        Atom head = parse_literal(false);
         
         cin >> body_size;
         vector<Atom> body_literals;
@@ -296,7 +295,7 @@ void parse_axiom_schemas(Task &task, int number_axiom_schemas)
         }
         axioms.emplace_back(i, layer, std::move(parameters), std::move(body_literals), std::move(equality_conditions), std::move(head));
     }
-    task.initialize_axiom_schemas(axioms);
+    task.initialize_axiom_schemas(std::move(axioms));
 }
 
 void parse_goal(Task &task, int goal_size)

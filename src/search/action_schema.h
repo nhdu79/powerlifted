@@ -81,16 +81,18 @@ public:
     }
    
     // TODO GR: This is a very expensive stub for no such effects.
-    // We do not handle nullary effects special anymore, so this method should
-    // no longer be used and be removed. 
+    // We do not handle nullary effects specially anymore, so this method should
+    // no longer be used and be removed.
+    // I only added it so that the intermediate code compiles.
     const std::vector<bool> get_positive_nullary_effects() const {
         std::vector<bool> positive_nul_eff(positive_nullary_precond.size(), false);
         return positive_nul_eff;
     }
    
     // TODO GR: This is a very expensive stub for no such effects.
-    // We do not handle nullary effects special anymore, so this method should
+    // We do not handle nullary effects specially anymore, so this method should
     // no longer be used and be removed. 
+    // I only added it so that the intermediate code compiles.
     const std::vector<bool> get_negative_nullary_effects() const {
         std::vector<bool> negative(positive_nullary_precond.size(), false);
         return negative;
