@@ -86,6 +86,10 @@ class Condition(object):
     def collect_mkos(self, result):
         for part in self.parts:
             part.collect_mkos(result)
+    
+    def collect_objects(self, result):
+        for part in self.parts:
+            part.collect_objects(result)
 
     def free_variables(self):
         result = set()
@@ -111,13 +115,50 @@ class Condition(object):
                 return True
         return False
 
+    def get_literal_tuple(self):
+        """This should only be called on conditions that are a conjunction
+           of literals, a single literal or Truth.
+        """
+        assert not isinstance(self, Falsity)
+        assert not isinstance(self, QuantifiedCondition)
+
+        conds = ()
+        if isinstance(self, Literal):
+            conds = (self, )
+        else:
+            conds = self.parts
+        assert all(isinstance(l, Literal) for l in conds), "condition not normalized: %r" % self
+        return conds
+
 
 class MinimumKnowledgeOperator(Condition): # MKO
+    # Defining __eq__ blocks inheritance of __hash__, so must set it explicitly.
+    __hash__ = Condition.__hash__
 
     def __init__(self, parts, negated):
         self.parts = tuple(parts)
         self.hash = hash((self.__class__, self.parts))
         self.negated = negated
+
+    def __eq__(self, other):
+        # Compare hash first for speed reasons.
+        return (self.hash == other.hash and
+                self.__class__ is other.__class__ and
+                self.negated == other.negated and
+                self.parts == other.parts)
+
+    def __ne__(self, other):
+        return not self == other
+
+    @property
+    def key(self):
+        return "MKO", self.parts, self.negated
+
+    def __lt__(self, other):
+        return self.key < other.key
+
+    def __le__(self, other):
+        return self.key <= other.key
 
     def uniquify_variables(self, type_map, renamings={}):
         return self.__class__([part.uniquify_variables(type_map, renamings)
@@ -296,7 +337,6 @@ class UniversalCondition(QuantifiedCondition):
 class ExistentialCondition(QuantifiedCondition):
     def _untyped(self, parts):
         type_literals = [par.get_atom() for par in self.parameters]
-        print(type_literals)
         return ExistentialCondition(self.parameters,
                                     [Conjunction(type_literals + parts)])
 
@@ -355,6 +395,9 @@ class Literal(Condition):
 
     def collect_predicates(self, result):
         result.add(self.predicate)
+
+    def collect_objects(self, result):
+        result.update(o for o in self.args if o[0] != "?")
 
     def change_parts(self, parts):
         return self

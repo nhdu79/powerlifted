@@ -42,6 +42,11 @@ def parse_args():
         "--unit-cost", action="store_true",
         help="flag if the actions should be treated as unit-cost actions")
     argparser.add_argument(
+        "--layer-strategy", default="min", choices=["min", "max"],
+        help="How to assign layers to derived variables. 'min' attempts to put as "
+        "many variables into the same layer as possible, while 'max' puts each variable "
+        "into its own layer unless it is part of a cycle.")
+    argparser.add_argument(
         "--test-experiment", action="store_true",
         help="flag if the run is an experiment or not")
     argparser.add_argument(

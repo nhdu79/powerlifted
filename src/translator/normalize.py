@@ -44,7 +44,7 @@ class EffectConditionProxy(ConditionProxy):
         self.action.effects.append(self.owner)
     def delete_owner(self, task):
         self.action.effects.remove(self.owner)
-    def build_rules(self, rules,add_inequalities):
+    def build_rules(self, rules, add_inequalities):
         effect = self.owner
         rule_head = effect.literal
         if not rule_head.negated:
@@ -64,7 +64,7 @@ class AxiomConditionProxy(ConditionProxy):
         task.axioms.append(self.owner)
     def delete_owner(self, task):
         task.axioms.remove(self.owner)
-    def build_rules(self, rules,add_inequalities):
+    def build_rules(self, rules, add_inequalities):
         axiom = self.owner
         app_rule_head = get_axiom_predicate(axiom)
         app_rule_body = condition_to_rule_body(axiom.parameters, self.condition, add_inequalities)
@@ -316,6 +316,7 @@ def split_disjunctions(task):
                 new_proxy.set(part)
                 new_proxy.register_owner(task)
             proxy.delete_owner(task)
+
 
 # [4] Pull existential quantifiers out of conjunctions (but not out of mkos) and group them.
 #

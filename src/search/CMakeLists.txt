@@ -14,6 +14,8 @@ endif()
 set(CORE_SOURCES
         action.cc
         action_schema.cc
+        axiom_schema.cc
+        conditional_effect.cc
         hash_structures.cc
         plan_manager.cc
         predicate.cc

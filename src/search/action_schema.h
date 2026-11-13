@@ -2,6 +2,7 @@
 #define SEARCH_ACTION_SCHEMA_H
 
 #include "atom.h"
+#include "conditional_effect.h"
 #include "structures.h"
 
 #include <string>
@@ -13,10 +14,11 @@ class ActionSchema {
     std::string name;
     int index;
     int cost;
+    int num_external_parameters;
     std::vector<Parameter> parameters;
     std::vector<FreshVariable> fresh_variables;
     std::vector<Atom> precondition;
-    std::vector<Atom> effects;
+    std::vector<ConditionalEffect> effects;
     std::vector<Atom> equality_precondition;
 
     /*
@@ -26,22 +28,19 @@ class ActionSchema {
      */
     std::vector<bool> positive_nullary_precond;
     std::vector<bool> negative_nullary_precond;
-    std::vector<bool> positive_nullary_effects;
-    std::vector<bool> negative_nullary_effects;
 
 public:
     explicit ActionSchema(std::string name,
                           int index,
                           int cost,
+                          int num_external_parameters,
                           std::vector<Parameter> parameters,
                           std::vector<FreshVariable> fresh_variables,
                           std::vector<Atom> precondition,
-                          std::vector<Atom> effects,
+                          std::vector<ConditionalEffect> effects,
                           std::vector<Atom> equality_precondition,
                           std::vector<bool> positive_nullary_precond,
-                          std::vector<bool> negative_nullary_precond,
-                          std::vector<bool> positive_nullary_effects,
-                          std::vector<bool> negative_nullary_effects);
+                          std::vector<bool> negative_nullary_precond);
 
     const std::string &get_name() const {
         return name;
@@ -67,8 +66,36 @@ public:
         return precondition;
     }
 
-    const std::vector<Atom> &get_effects() const {
-        return effects;
+
+    // TODO GR: This is what we actually want but it won't work with the rest of
+    // the code, so we (wrongly and inefficently) discard the effect
+    // conditions.
+    // const std::vector<ConditionalEffect> &get_effects() const {
+    //    return effects;
+    //}
+    const std::vector<Atom> get_effects() const {
+        std::vector<Atom> effs;
+        for (auto e: effects) 
+          effs.push_back(e.get_effect());
+        return effs;
+    }
+   
+    // TODO GR: This is a very expensive stub for no such effects.
+    // We do not handle nullary effects specially anymore, so this method should
+    // no longer be used and be removed.
+    // I only added it so that the intermediate code compiles.
+    const std::vector<bool> get_positive_nullary_effects() const {
+        std::vector<bool> positive_nul_eff(positive_nullary_precond.size(), false);
+        return positive_nul_eff;
+    }
+   
+    // TODO GR: This is a very expensive stub for no such effects.
+    // We do not handle nullary effects specially anymore, so this method should
+    // no longer be used and be removed. 
+    // I only added it so that the intermediate code compiles.
+    const std::vector<bool> get_negative_nullary_effects() const {
+        std::vector<bool> negative(positive_nullary_precond.size(), false);
+        return negative;
     }
 
     const std::vector<Atom> &get_equality_precondition() const {
@@ -81,14 +108,6 @@ public:
 
     const std::vector<bool> &get_negative_nullary_precond() const {
         return negative_nullary_precond;
-    }
-
-    const std::vector<bool> &get_positive_nullary_effects() const {
-        return positive_nullary_effects;
-    }
-
-    const std::vector<bool> &get_negative_nullary_effects() const {
-        return negative_nullary_effects;
     }
 
     bool is_ground() const {

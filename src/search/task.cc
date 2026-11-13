@@ -100,9 +100,14 @@ void Task::create_goal_condition(std::vector<AtomicGoal> goals,
         std::move(goals), std::move(nullary_goals), std::move(negative_nullary_goals));
 }
 
-void Task::initialize_action_schemas(const std::vector<ActionSchema> &action_list)
+void Task::initialize_action_schemas(std::vector<ActionSchema> &&action_list)
 {
-    action_schemas = action_list;
+    action_schemas = std::move(action_list);
+}
+
+void Task::initialize_axiom_schemas(std::vector<AxiomSchema> &&axiom_list)
+{
+    axiom_schemas = std::move(axiom_list);
 }
 
 bool Task::is_goal(const DBState &state) const
