@@ -5,6 +5,7 @@ import os
 import signal
 import sys
 import traceback
+
 from collections import defaultdict
 
 
@@ -18,10 +19,10 @@ if not python_version_supported():
 
 import compile_types
 import normalize
-import ontology
 import options
-import pddl
+import ontology
 import pddl_parser
+import pddl
 import reachability
 import remove_predicates
 import static_predicates
@@ -38,7 +39,6 @@ TRANSLATE_OUT_OF_TIME = 21
 
 native_stdout = sys.stdout
 
-
 def test_if_experiment(test):
     if test:
         sys.exit(0)
@@ -46,20 +46,16 @@ def test_if_experiment(test):
 
 def perform_sanity_checks(task):
     for pred in task.predicates:
-        assert not pred.name.startswith("action_"), (
-            "Predicate name cannot start with 'action_'."
-        )
-
+        assert not pred.name.startswith("action_"), "Predicate name cannot start with \'action_\'."
 
 def main():
     timer = timers.Timer()
 
     with timers.timing("Parsing", True):
         task = pddl_parser.open(
-            domain_filename=options.domain, task_filename=options.task
-        )
+            domain_filename=options.domain, task_filename=options.task)
 
-    print("Processing task", task.task_name)
+    print('Processing task', task.task_name)
     with timers.timing("Normalizing task"):
         normalize.normalize(task)
 
@@ -76,12 +72,11 @@ def main():
     with timers.timing("Checking static predicates"):
         static_pred = static_predicates.check(task)
 
-    assert (
-        isinstance(task.goal, pddl.Conjunction)
-        or isinstance(task.goal, pddl.Atom)
-        or isinstance(task.goal, pddl.NegatedAtom)
-        or isinstance(task.goal, pddl.MinimalKnowledgeOperator)
-    ), "Goal is not conjunctive."
+    assert isinstance(task.goal, pddl.Conjunction) or \
+           isinstance(task.goal, pddl.Atom) or \
+           isinstance(task.goal, pddl.NegatedAtom) or \
+           isinstance(task.goal, pddl.MinimalKnowledgeOperator), \
+        "Goal is not conjunctive."
 
     if options.ground_state_representation:
         with timers.timing("Generating complete initial state"):
@@ -90,15 +85,9 @@ def main():
     get_initial_state_size(static_pred, task)
 
     if options.verbose_data:
-        print(
-            "%s %s: initial state size %d : time %s"
-            % (
-                os.path.basename(os.path.dirname(options.domain)),
-                os.path.basename(options.task),
-                len(task.init),
-                timer,
-            )
-        )
+        print("%s %s: initial state size %d : time %s" % (
+            os.path.basename(os.path.dirname(options.domain)),
+            os.path.basename(options.task), len(task.init), timer))
     test_if_experiment(options.test_experiment)
 
     # Preprocess a dict of supertypes for every type from the TypeGraph
@@ -107,10 +96,8 @@ def main():
 
     # Sets output file from options
     if os.path.isfile(options.output_file):
-        print(
-            "WARNING: file %s already exists, it will be overwritten"
-            % options.output_file
-        )
+        print("WARNING: file %s already exists, it will be overwritten" %
+              options.output_file)
     output = open(options.output_file, "w")
 
     with timers.timing("Removing function symbols from initial state"):
@@ -254,7 +241,7 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
         assert isinstance(action.effects, list)
 
         fresh_vars = set()
-        fresh_var_names = set()  # set like the one above to make output code easier
+        fresh_var_names = set() # set like the one above to make output code easier
         for eff in action.effects:
             for v in eff.parameters:
                 fresh_vars.add(v)
@@ -262,15 +249,8 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
         fresh_vars = list(fresh_vars)
         fresh_vars.sort()
 
-        print(
-            action.name,
-            action.cost,
-            len(list(action.parameters)),
-            len(fresh_vars),
-            len(precond),
-            len(list(action.effects)),
-            file=output,
-        )
+        print(action.name, action.cost, len(list(action.parameters)), len(fresh_vars),
+              len(precond), len(list(action.effects)), file=output)
         for index, par in enumerate(action.parameters):
             parameter_index[par.name] = index
             print(par.name, index, type_index[par.type_name], file=output)
@@ -284,19 +264,16 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
             for x in cond.args:
                 if x in parameter_index:
                     # If it is a parameter
-                    args_list += ["p", str(parameter_index[x])]
+                    args_list += ['p', str(parameter_index[x])]
                 else:
                     # Otherwise, it is a constant
-                    args_list += ["c", str(object_index[x])]
-            print(
-                cond.predicate,
-                predicate_index[cond.predicate],
-                int(cond.negated),
-                len(cond.args),
-                " ".join(i for i in args_list),
-                int(cond.mko),
-                file=output,
-            )
+                    args_list += ['c', str(object_index[x])]
+            print(cond.predicate, predicate_index[cond.predicate],
+                  int(cond.negated),
+                  len(cond.args),
+                  ' '.join(i for i in args_list),
+                  int(cond.mko),
+                  file=output)
         # Delete effects first to guarantee add-after-delete semantics
         action.effects.sort(key=lambda x: int(x.literal.negated), reverse=True)
         for eff in action.effects:
@@ -306,21 +283,19 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
                 if x in parameter_index:
                     if x in fresh_var_names:
                         # If it is a fresh variable
-                        args_list += ["f", str(parameter_index[x])]
+                        args_list += ['f', str(parameter_index[x])]
                     else:
                         # If it is a parameter
-                        args_list += ["p", str(parameter_index[x])]
+                        args_list += ['p', str(parameter_index[x])]
                 else:
                     # Otherwise, it is a constant
-                    args_list += ["c", str(object_index[x])]
-            print(
-                eff.literal.predicate,
-                predicate_index[eff.literal.predicate],
-                int(eff.literal.negated),
-                len(eff.literal.args),
-                " ".join(i for i in args_list),
-                file=output,
-            )
+                    args_list += ['c', str(object_index[x])]
+            print(eff.literal.predicate,
+                  predicate_index[eff.literal.predicate],
+                  int(eff.literal.negated),
+                  len(eff.literal.args),
+                  ' '.join(i for i in args_list),
+                  file=output)
 
 
 def print_rules(output, title, rules, object_index, predicate_index):
@@ -495,28 +470,19 @@ def print_goal(output, task, atom_index, object_index, predicate_index):
             # If we use ground state representation, we simply output the
             # atom name, followed by its atom index, whether it is negated
             # or not in the goal, and its mko flag.
-            print(
-                atom,
-                atom_index[str(atom)],
-                int(atom.negated),
-                int(atom.mko),
-                file=output,
-            )
+            print(atom, atom_index[str(atom)], int(atom.negated),
+                  int(atom.mko), file=output)
         else:
             # If we use sparse state representation, we output the atom name,
             # its predicate index, a boolean flag indicating whether it is
             # negated in the goal condition or not, the number of arguments
             # in the predicate, the indices of the objects instantiating
             # the arguments, and its mko flag (as for action preconditions).
-            print(
-                atom,
-                predicate_index[atom.predicate],
-                int(atom.negated),
-                len(atom.args),
-                " ".join(str(object_index[o]) for o in atom.args),
-                int(atom.mko),
-                file=output,
-            )
+            print(atom, predicate_index[atom.predicate], int(atom.negated),
+                  len(atom.args),
+                  ' '.join(str(object_index[o]) for o in atom.args),
+                  int(atom.mko),
+                  file=output)
 
 
 def print_initial_state(output, task, atom_index, object_index, predicate_index):
@@ -541,13 +507,11 @@ def print_initial_state(output, task, atom_index, object_index, predicate_index)
         # TODO what to do with functions?
         if isinstance(atom, pddl.Assign):
             continue
-        print(
-            atom,
-            "%d %d %d %d"
-            % (index, predicate_index[atom.predicate], atom.negated, len(atom.args)),
-            " ".join(str(object_index[o]) for o in atom.args),
-            file=output,
-        )
+        print(atom, '%d %d %d %d' % (
+            index, predicate_index[atom.predicate], atom.negated,
+            len(atom.args)),
+              ' '.join(str(object_index[o]) for o in atom.args),
+              file=output)
 
 
 def print_objects(output, task, object_index, type_index, types_dict):
@@ -559,15 +523,10 @@ def print_objects(output, task, object_index, type_index, types_dict):
     print("OBJECTS %d" % len(task.objects), file=output)
     for index, obj in enumerate(task.objects):
         object_index[obj.name] = index
-        print(
-            "%s %d %d" % (obj.name, index, len(types_dict[obj.type_name])),
-            end=" ",
-            file=output,
-        )
-        print(
-            " ".join(str(type_index[t]) for t in sorted(types_dict[obj.type_name])),
-            file=output,
-        )
+        print('%s %d %d' % (obj.name, index, len(types_dict[obj.type_name])),
+              end=' ', file=output)
+        print(' '.join(str(type_index[t]) for t in sorted(types_dict[obj.type_name])),
+              file=output)
 
 
 def print_predicates(output, task, predicate_index, type_index):
@@ -589,23 +548,20 @@ def print_predicates(output, task, predicate_index, type_index):
             # Assertion catches predicates with 'either'
             for arg in p.arguments:
                 try:
-                    assert not isinstance(arg.type_name, list)
+                    assert (not isinstance(arg.type_name, list))
                 except AssertionError:
-                    raise NotImplementedError(
-                        "Your task probably has an "
-                        "'either'-typed predicate, "
-                        "which is not implemented."
-                    )
+                    raise NotImplementedError("Your task probably has an "
+                                              "'either'-typed predicate, "
+                                              "which is not implemented.")
                 args.append(str(type_index[arg.type_name]))
-            print(" ".join(args), file=output)
+            print(' '.join(args), file=output)
         else:
             # If it is static, we can assume that all its parameters are of
             # type object, since we cannot generate new atoms of this predicate
             # we cannot mess up it with static predicates. (Assuming everything
             # done before is correct.
-            print(
-                " ".join(str(type_index["object"]) for arg in p.arguments), file=output
-            )
+            print(' '.join(str(type_index['object']) for arg in p.arguments),
+                  file=output)
 
 
 def print_types(output, task, type_index):
@@ -632,7 +588,7 @@ def get_types_dict(g):
     for current_type in g.types:
         t_name = current_type.name
         types_dict[t_name].add(t_name)
-        while t_name != "object":
+        while t_name != 'object':
             t_name = g.edges[t_name]
             types_dict[current_type.name].add(t_name)
     return types_dict
@@ -651,29 +607,25 @@ def get_initial_state_size(static_pred, task):
 def remove_static_predicates_from_goal(task, static_pred):
     parts = []
     removed = 0
-    if (
-        isinstance(task.goal, pddl.conditions.Atom)
-        or isinstance(task.goal, pddl.Atom)
-        or isinstance(task.goal, pddl.NegatedAtom)
-    ):
+    if isinstance(task.goal, pddl.conditions.Atom) or \
+       isinstance(task.goal, pddl.Atom) or \
+       isinstance(task.goal, pddl.NegatedAtom):
         if task.goal.mko or task.goal.predicate not in static_pred:
             return
         else:
             removed += 1
     for g in task.goal.parts:
-        if (
-            isinstance(g, pddl.MinimalKnowledgeOperator)
-            or g.mko
-            or g.predicate not in static_pred
-        ):
+        if isinstance(g, pddl.MinimalKnowledgeOperator) or g.mko or \
+           g.predicate not in static_pred:
             parts.append(g)
         else:
             removed += 1
     if removed > 0:
-        print("Removing satisfied static predicates from the goal.", file=native_stdout)
+        print("Removing satisfied static predicates from the goal.",
+              file=native_stdout)
 
     if len(parts) == 0:
-        print("Trivially solvable task.", file=native_stdout)
+        print ("Trivially solvable task.", file=native_stdout)
         output_trivially_solvable_task()
         sys.exit(0)
     task.goal = pddl.Conjunction(parts)
@@ -684,29 +636,22 @@ def is_trivially_unsolvable(task, static_pred):
     Check if static information in the goal is satisfied already in the initial
     state. If it is not, then it can never be and hence the task is unsolvable.
     """
-
     def violated_in_initial_state(init, g):
         if g.negated:
             if g.negate() in init:
-                print(
-                    "Unsolvable task: Goal has a static predicate that is "
-                    "not satisfied in the initial state of the task!",
-                    file=native_stdout,
-                )
+                print("Unsolvable task: Goal has a static predicate that is "
+                      "not satisfied in the initial state of the task!",
+                      file=native_stdout)
                 return True
         else:
             if g not in init:
-                print(
-                    "Unsolvable task: Goal has a static predicate that is "
-                    "not satisfied in the initial state of the task!",
-                    file=native_stdout,
-                )
+                print("Unsolvable task: Goal has a static predicate that is "
+                      "not satisfied in the initial state of the task!",
+                      file=native_stdout)
                 return True
 
     if isinstance(task.goal, pddl.Atom):
-        if task.goal.predicate in static_pred and violated_in_initial_state(
-            task.init, task.goal
-        ):
+        if task.goal.predicate in static_pred and violated_in_initial_state(task.init, task.goal):
             return True
     for g in task.goal.parts:
         if isinstance(g, pddl.Atom):
@@ -723,7 +668,7 @@ def remove_functions_from_initial_state(task):
         if not isinstance(i, pddl.Assign):
             new_init.append(i)
     for i in new_init:
-        assert isinstance(i, pddl.Atom)
+        assert (isinstance(i, pddl.Atom))
     task.init = new_init
 
 
@@ -779,17 +724,15 @@ if __name__ == "__main__":
     try:
         signal.signal(signal.SIGXCPU, handle_sigxcpu)
     except AttributeError:
-        print(
-            "Warning! SIGXCPU is not available on your platform. "
-            "This means that the planner cannot be gracefully "
-            "terminated "
-            "when using a time limit, which, however, is probably "
-            "supported on your platform anyway."
-        )
+        print("Warning! SIGXCPU is not available on your platform. "
+              "This means that the planner cannot be gracefully "
+              "terminated "
+              "when using a time limit, which, however, is probably "
+              "supported on your platform anyway.")
     try:
         # Reserve about 10 MB (in Python 2) of emergency memory.
         # https://stackoverflow.com/questions/19469608/
-        emergency_memory = "x" * 10**7
+        emergency_memory = "x" * 10 ** 7
         main()
     except MemoryError:
         emergency_memory = ""

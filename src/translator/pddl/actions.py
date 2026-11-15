@@ -2,13 +2,13 @@ from __future__ import print_function
 
 import copy
 
-from . import conditions, effects
+from . import effects
+from . import conditions
 
 
 class Action(object):
-    def __init__(
-        self, name, parameters, num_external_parameters, precondition, effects, cost
-    ):
+    def __init__(self, name, parameters, num_external_parameters,
+                 precondition, effects, cost):
         assert 0 <= num_external_parameters <= len(parameters)
         self.name = name
         self.parameters = parameters
@@ -39,13 +39,14 @@ class Action(object):
         for eff in self.effects:
             eff.dump()
         print("Cost:")
-        if self.cost:
+        if (self.cost):
             self.cost.dump()
         else:
             print("  None")
 
     def uniquify_variables(self):
-        self.type_map = dict([(par.name, par.type_name) for par in self.parameters])
+        self.type_map = dict([(par.name, par.type_name)
+                              for par in self.parameters])
         self.precondition = self.precondition.uniquify_variables(self.type_map)
         for effect in self.effects:
             effect.uniquify_variables(self.type_map)
@@ -56,13 +57,9 @@ class Action(object):
             relaxed_eff = eff.relaxed()
             if relaxed_eff:
                 new_effects.append(relaxed_eff)
-        return Action(
-            self.name,
-            self.parameters,
-            self.num_external_parameters,
-            self.precondition.relaxed().simplified(),
-            new_effects,
-        )
+        return Action(self.name, self.parameters, self.num_external_parameters,
+                      self.precondition.relaxed().simplified(),
+                      new_effects)
 
     def untyped(self):
         # We do not actually remove the types from the parameter lists,
@@ -72,8 +69,7 @@ class Action(object):
         parameter_atoms = [par.to_untyped_strips() for par in self.parameters]
         new_precondition = self.precondition.untyped()
         result.precondition = conditions.Conjunction(
-            parameter_atoms + [new_precondition]
-        )
+            parameter_atoms + [new_precondition])
         result.effects = [eff.untyped() for eff in self.effects]
         return result
 
@@ -86,9 +82,8 @@ class Action(object):
         """
         precond = []
         # Precond can be a single mko
-        if isinstance(
-            self.precondition, (conditions.Atom, conditions.MinimalKnowledgeOperator)
-        ):
+        if isinstance(self.precondition,
+                      (conditions.Atom, conditions.MinimalKnowledgeOperator)):
             precond = [self.precondition]
         else:
             precond = list(self.precondition.parts)
@@ -96,8 +91,8 @@ class Action(object):
             assert isinstance(precond, list)
         except AssertionError:
             raise NotImplementedError(
-                "Preconditions must be a single atom or a conjunction of atoms."
-            )
+                'Preconditions must be a single atom or a conjunction of '
+                'atoms.')
         return precond
 
     @property
@@ -114,7 +109,8 @@ class Action(object):
             try:
                 assert isinstance(eff, effects.Effect)
             except AssertionError:
-                raise NotImplementedError("Conditional effects are not supported.")
+                raise NotImplementedError(
+                    "Conditional effects are not supported.")
             fresh_vars = [i.name for i in eff.parameters]
             for arg in eff.literal.args:
                 if arg not in fresh_vars:
@@ -127,8 +123,7 @@ class Action(object):
 
         :return: void
         """
-        if isinstance(
-            self.precondition, (conditions.Literal, conditions.MinimalKnowledgeOperator)
-        ):
+        if isinstance(self.precondition,
+                      (conditions.Literal, conditions.MinimalKnowledgeOperator)):
             self.precondition = conditions.Conjunction([self.precondition])
         return
