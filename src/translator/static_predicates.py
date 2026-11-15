@@ -16,6 +16,10 @@ def get_fluent_predicates_from_effects(actions):
             fluent_predicates.add(pred)
     return fluent_predicates
 
+def get_fluent_predicates_from_axioms(axioms):
+    """Collects the head predicate of all axioms."""
+    return [a.name for a in axioms]
+
 def get_str_predicates(predicates):
     """Creates a set of string containing the name of the predicates
 
@@ -42,6 +46,7 @@ def mark_static_predicates(task, static_predicates):
 
 def check(task):
     fluent_predicates = get_fluent_predicates_from_effects(task.actions)
+    fluent_predicates.update(get_fluent_predicates_from_axioms(task.axioms))
     predicates_as_str = get_str_predicates(task.predicates)
     static_predicates = predicates_as_str - fluent_predicates
     mark_static_predicates(task, static_predicates)

@@ -25,9 +25,10 @@ void parse_types(Task &task, int number_types);
 void parse_predicates(Task &task, int number_predicates);
 void parse_objects(Task &task, int number_objects);
 void parse_initial_state(Task &task, int initial_state_size);
-// Both return the number of mko atoms they read.
+// All three return the number of mko atoms they read.
 int parse_goal(Task &task, int goal_size);
 int parse_action_schemas(Task &task, int number_action_schemas);
+int parse_axiom_schemas(Task &task, int number_axiom_schemas);
 // Reads number_complements lines of the LOWERBOUND-COMPLEMENTS section
 // (after its canary).
 bool parse_complements(Task &task, int number_complements);
