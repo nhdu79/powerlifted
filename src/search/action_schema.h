@@ -28,6 +28,10 @@ class ActionSchema {
      */
     std::vector<bool> positive_nullary_precond;
     std::vector<bool> negative_nullary_precond;
+    // Nullary preconditions standing for an mko (see Atom::is_mko), kept
+    // apart as they are evaluated w.r.t. the lowerbound rules.
+    std::vector<bool> positive_nullary_mko_precond;
+    std::vector<bool> negative_nullary_mko_precond;
 
 public:
     explicit ActionSchema(std::string name,
@@ -40,7 +44,9 @@ public:
                           std::vector<ConditionalEffect> effects,
                           std::vector<Atom> equality_precondition,
                           std::vector<bool> positive_nullary_precond,
-                          std::vector<bool> negative_nullary_precond);
+                          std::vector<bool> negative_nullary_precond,
+                          std::vector<bool> positive_nullary_mko_precond,
+                          std::vector<bool> negative_nullary_mko_precond);
 
     const std::string &get_name() const {
         return name;
@@ -108,6 +114,14 @@ public:
 
     const std::vector<bool> &get_negative_nullary_precond() const {
         return negative_nullary_precond;
+    }
+
+    const std::vector<bool> &get_positive_nullary_mko_precond() const {
+        return positive_nullary_mko_precond;
+    }
+
+    const std::vector<bool> &get_negative_nullary_mko_precond() const {
+        return negative_nullary_mko_precond;
     }
 
     bool is_ground() const {

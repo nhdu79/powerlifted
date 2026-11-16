@@ -107,6 +107,12 @@ def parse_condition_aux(alist, negated, type_dict, predicate_dict,
             assert len(args) == 2
         if tag == "not":
             assert len(args) == 1
+            if within_mko and not _is_equality(args[0]):
+                # An mko's query must be a union of conjunctive queries.
+                raise SystemExit(
+                    f"negation inside an mko is not supported (only of "
+                    f"equalities): {alist}"
+                )
             return parse_condition_aux(
                 args[0], not negated, type_dict, predicate_dict, within_mko)
     elif tag in ("forall", "exists"):
@@ -140,6 +146,10 @@ def parse_condition_aux(alist, negated, type_dict, predicate_dict,
         return pddl.ExistentialCondition(parameters, parts)
 
 
+def _is_equality(alist):
+    return isinstance(alist, list) and bool(alist) and alist[0] == "="
+
+
 def parse_mko(alist, type_dict, predicate_dict, negated=False, within_mko=False):
     if len(alist) != 2:
         raise SystemExit(f"mko used with wrong arity: {alist}")
@@ -149,7 +159,7 @@ def parse_mko(alist, type_dict, predicate_dict, negated=False, within_mko=False)
 
     condition = parse_condition_aux(alist[1], False, type_dict,
                                     predicate_dict, True)
-    return pddl.conditions.MinimumKnowledgeOperator([condition], negated)
+    return pddl.conditions.MinimalKnowledgeOperator([condition], negated)
 
 
 def parse_literal(alist, type_dict, predicate_dict, negated=False):

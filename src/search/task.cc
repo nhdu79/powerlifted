@@ -1,11 +1,31 @@
 #include "task.h"
 
+#include "datalog/disjunctive_existential_program.h"
+
 #include <cassert>
 #include <iostream>
 #include <utility>
 #include <vector>
 
 using namespace std;
+
+Task::Task(const string &domain_name, const string &task_name)
+    : domain_name(domain_name), task_name(task_name)
+{
+    // Create class only with task and domain names
+}
+
+Task::~Task() = default;
+
+void Task::set_lowerbound_program(unique_ptr<datalog::DisjunctiveExistentialProgram> program)
+{
+    lowerbound_program = std::move(program);
+}
+
+void Task::set_upperbound_program(unique_ptr<datalog::DisjunctiveExistentialProgram> program)
+{
+    upperbound_program = std::move(program);
+}
 
 void Task::add_predicate(
     string &name, int index, int arity, bool static_predicate, vector<int> &types)
@@ -94,10 +114,15 @@ void Task::dump_goal()
 
 void Task::create_goal_condition(std::vector<AtomicGoal> goals,
                                  std::unordered_set<int> nullary_goals,
-                                 std::unordered_set<int> negative_nullary_goals)
+                                 std::unordered_set<int> negative_nullary_goals,
+                                 std::unordered_set<int> nullary_mko_goals,
+                                 std::unordered_set<int> negative_nullary_mko_goals)
 {
-    goal = GoalCondition(
-        std::move(goals), std::move(nullary_goals), std::move(negative_nullary_goals));
+    goal = GoalCondition(std::move(goals),
+                         std::move(nullary_goals),
+                         std::move(negative_nullary_goals),
+                         std::move(nullary_mko_goals),
+                         std::move(negative_nullary_mko_goals));
 }
 
 void Task::initialize_action_schemas(std::vector<ActionSchema> &&action_list)

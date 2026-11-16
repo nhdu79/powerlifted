@@ -86,7 +86,9 @@ class Action(object):
         :return: list of preconditions
         """
         precond = []
-        if isinstance(self.precondition, conditions.Atom):
+        # Precond can be a single mko
+        if isinstance(self.precondition,
+                      (conditions.Atom, conditions.MinimalKnowledgeOperator)):
             precond = [self.precondition]
         else:
             precond = list(self.precondition.parts)
@@ -126,6 +128,7 @@ class Action(object):
 
         :return: void
         """
-        if isinstance(self.precondition, conditions.Literal):
+        if isinstance(self.precondition,
+                      (conditions.Literal, conditions.MinimalKnowledgeOperator)):
             self.precondition = conditions.Conjunction([self.precondition])
         return

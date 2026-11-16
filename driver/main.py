@@ -3,12 +3,13 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from build import build, PROJECT_ROOT
 
 from . import arguments, portfolio_runner
-from .utils import get_elapsed_time, remove_temporary_files
+from .utils import remove_temporary_files, silent_remove
 from .single_search_runner import run_single_search
 from .preprocessor import preprocess_cpddl
 
@@ -51,9 +52,20 @@ def run_search(build_dir, options, extra):
         return portfolio_runner.run(build_dir, options, extra)
 
 def run_translator(build_dir, options, extra):
-    translator = subprocess.Popen([os.path.join(build_dir, 'translator', 'translate.py'),
-                                   options.domain, options.instance,
-                                   options.ontology, '--output-file', options.translator_file] + extra)
+    translator_args = [
+        os.path.join(build_dir, "translator", "translate.py"),
+        options.domain,
+        options.instance,
+    ]
+    if options.ontology is not None:
+        translator_args += ["--ontology", options.ontology]
+    if options.clipper is not None:
+        translator_args += ["--clipper", options.clipper]
+    if options.konclude_ontology_file is not None:
+        translator_args += ["--konclude-ontology-file", options.konclude_ontology_file]
+    translator = subprocess.Popen(
+        translator_args + ["--output-file", options.translator_file] + extra
+    )
     translator.communicate()
     if translator.returncode != 0:
         raise RuntimeError("Error during preprocessing/translation.")
@@ -77,6 +89,13 @@ def set_extra_options(options):
         CPP_EXTRA_OPTIONS.append('--full-novelty-check')
     if options.novelty_early_stop:
         CPP_EXTRA_OPTIONS += ['--novelty-early-stop', str(1)]
+    if options.use_konclude:
+        CPP_EXTRA_OPTIONS.append("--use-konclude")
+    if options.konclude_restart_every is not None:
+        CPP_EXTRA_OPTIONS += [
+            "--konclude-restart-every",
+            str(options.konclude_restart_every),
+        ]
 
 
     # Checks if unit-cost flag is true
@@ -95,7 +114,7 @@ def main():
     build_dir = os.path.join(PROJECT_ROOT, 'builds', 'debug' if options.debug else 'release')
 
     if options.build:
-        build(options.debug, options.cxx_compiler)
+        build(options.debug, options.cxx_compiler, options.use_konclude)
 
     # Create build path
     if not os.path.exists(build_dir):
@@ -106,10 +125,24 @@ def main():
 
     PYTHON_EXTRA_OPTIONS, CPP_EXTRA_OPTIONS = set_extra_options(options)
 
-    # Invoke the Python preprocessor
-    run_translator(build_dir, options, PYTHON_EXTRA_OPTIONS)
+    # The normalized ontology for the search's Konclude reasoner, which the
+    # translator writes: the Konclude worker reloads it whenever it restarts,
+    # so it may only go once planning is over.
+    options.konclude_ontology_file = None
+    if options.use_konclude and options.ontology is not None:
+        fd, options.konclude_ontology_file = tempfile.mkstemp(
+            prefix="powerlifted-ontology-", suffix=".ofn"
+        )
+        os.close(fd)
 
-    # Invoke the C++ search component
-    search_exit_code = run_search(build_dir, options, CPP_EXTRA_OPTIONS)
+    try:
+        # Invoke the Python preprocessor
+        run_translator(build_dir, options, PYTHON_EXTRA_OPTIONS)
+
+        # Invoke the C++ search component
+        search_exit_code = run_search(build_dir, options, CPP_EXTRA_OPTIONS)
+    finally:
+        if options.konclude_ontology_file is not None:
+            silent_remove(options.konclude_ontology_file)
 
     return search_exit_code

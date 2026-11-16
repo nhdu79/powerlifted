@@ -20,17 +20,17 @@ if not python_version_supported():
 
 import axiom_rules
 import compile_types
-import complete_state
 import normalize
 import options
 import ontology
 import pddl_parser
 import pddl
-import pddl_to_prolog
 import reachability
 import remove_predicates
 import static_predicates
 import timers
+from rules import format_rule
+from rules.atoms import is_variable
 
 DEBUG = False
 
@@ -57,9 +57,6 @@ def main():
         task = pddl_parser.open(
             domain_filename=options.domain, task_filename=options.task)
 
-    print('The ontology is in file', options.ontology,
-          'but it is not yet used.')
-
     print('Processing task', task.task_name)
     with timers.timing("Normalizing task"):
         normalize.normalize(task)
@@ -85,7 +82,8 @@ def main():
     # Downward)
     assert isinstance(task.goal, pddl.Conjunction) or \
            isinstance(task.goal, pddl.Atom) or \
-           isinstance(task.goal, pddl.NegatedAtom), \
+           isinstance(task.goal, pddl.NegatedAtom) or \
+           isinstance(task.goal, pddl.MinimalKnowledgeOperator), \
         "Goal is not conjunctive."
 
     # TODO GR this needs to be extended to conditional effects and axioms
@@ -123,11 +121,18 @@ def main():
         output_trivially_unsolvable_task()
         sys.exit(0)
 
+    if options.ontology is not None:
+        with timers.timing("Processing ontology and MKOs"):
+            ontology.process_ontology(
+                task,
+                options.ontology,
+                clipper_path=options.clipper,
+                verbose=options.verbose_data,
+                functional_ontology_path=options.konclude_ontology_file,
+            )
+
     with timers.timing("Removing unused predicate symbols"):
         remove_static_predicates_from_goal(task, static_pred)
-
-    with timers.timing("Processing ontology and minimal knowledge operators"):
-        ontology.process_ontology(task, options.ontology)
 
     with timers.timing("Printing names and representation type"):
         print_names_and_representation(output, task.domain_name, task.task_name)
@@ -157,6 +162,35 @@ def main():
     with timers.timing("Printing axiom schemas"):
         print_axiom_schemas(output, task, object_index, predicate_index, type_index)
 
+    with timers.timing("Printing rules"):
+        print_rules(
+            output,
+            "LOWERBOUND-RULES",
+            getattr(task, "lowerbound_rules", []),
+            object_index,
+            predicate_index,
+        )
+        print_complements(
+            output, getattr(task, "lowerbound_complements", []), predicate_index
+        )
+        print_rules(
+            output,
+            "UPPERBOUND-RULES",
+            getattr(task, "upperbound_rules", []),
+            object_index,
+            predicate_index,
+        )
+
+    with timers.timing("Translating mko atoms into SPARQL", block=True):
+        # After print_action_schemas, which puts the actions in their order.
+        konclude_queries = ontology.konclude_queries(task)
+
+    with timers.timing("Printing ontology"):
+        print_ontology(output, getattr(task, "konclude_ontology", None), predicate_index)
+        print_konclude_queries(
+            output, konclude_queries, object_index, predicate_index
+        )
+
     print("Total translation time:", timer.get_cpu_time())
 
     return
@@ -168,7 +202,7 @@ def transform_into_unit_cost(task):
 
 
 def print_literal(literal, output, parameter_index, object_index, predicate_index,
-                  fresh_var_names=()):
+                  fresh_var_names=(), with_mko=False):
     args_list = []
     for x in literal.args:
         if x in parameter_index:
@@ -181,10 +215,14 @@ def print_literal(literal, output, parameter_index, object_index, predicate_inde
         else:
             # Otherwise, it is a constant
             args_list += ['c', str(object_index[x])]
+    # Condition literals (with_mko) end with their mko flag, see
+    # print_action_schemas.
+    mko = [int(literal.mko)] if with_mko else []
     print(literal.predicate, predicate_index[literal.predicate],
           int(literal.negated),
           len(literal.args),
           ' '.join(args_list),
+          *mko,
           file=output)
 
 
@@ -195,7 +233,7 @@ def print_condition(cond, parameter_index, object_index, predicate_index,
     print(len(conds), file=output)
     for literal in conds:
         print_literal(literal, output, parameter_index, object_index,
-                      predicate_index)
+                      predicate_index, with_mko=True)
 
 
 def print_parameters_and_get_index(parameters, type_index, output):
@@ -241,6 +279,8 @@ def print_action_schemas(output, task, object_index, predicate_index, type_index
     #    - list of pairs in the format (O, i), where O is 'c' if it is a
     #      constant and 'p' if it is a parameter. In the case it is a constant,
     #      'i' is its object index; otherwise it is the parameter index
+    #    - mko flag: 1 if the atom stands for an mko, i.e. is evaluated
+    #      w.r.t. the LB/UB rules, 0 if it is evaluated on the state
     # - Next, we print the number of effects, followed by the information for
     #   each effect as follows:
     # - Next, we output similar information for the effects
@@ -345,6 +385,165 @@ def print_axiom_schemas(output, task, object_index, predicate_index, type_index)
                         predicate_index, output)
 
 
+def print_rules(output, title, rules, object_index, predicate_index):
+    # Rules mirror datalog::DisjunctiveExistentialRule. Two sections, both
+    # always printed ("<title> 0" without an ontology): LOWERBOUND-RULES
+    # (task.lowerbound_rules) and UPPERBOUND-RULES (task.upperbound_rules).
+    # - Canary (title) and number of rules
+    # - Per rule, a line with
+    #    - number of effect atoms, i.e. the rule's head (0: bottom)
+    #    - number of body atoms
+    #    - number of variables
+    # - One line per effect atom, then per body atom, as action preconditions:
+    #    - predicate name
+    #    - predicate index
+    #    - negated (0/1)
+    #    - number of arguments
+    #    - pairs (O, i): O is 'c' for a constant (i: object index), 'p' for a
+    # variable (i: variable index)
+    # Variables: numbered per rule, 0 to n-1, by first occurrence, body first.
+    # Effect-only variables are existential. Several effect atoms: a
+    # disjunction without existential variables, a conjunction under the
+    # existential otherwise (see rules.disjunctive_existential_rule).
+    print("%s %d" % (title, len(rules)), file=output)
+    for rule in rules:
+        variable_index = {}
+        for atom in rule.body + rule.effect:
+            for x in atom.args:
+                if is_variable(x) and x not in variable_index:
+                    variable_index[x] = len(variable_index)
+        print(len(rule.effect), len(rule.body), len(variable_index), file=output)
+        for atom in rule.effect + rule.body:
+            if atom.predicate not in predicate_index:
+                raise ValueError(
+                    "Rule predicate %r is not a declared predicate: %s"
+                    % (atom.predicate, format_rule(rule))
+                )
+            args_list = []
+            for x in atom.args:
+                if is_variable(x):
+                    args_list += ["p", str(variable_index[x])]
+                elif x in object_index:
+                    args_list += ["c", str(object_index[x])]
+                else:
+                    raise ValueError(
+                        "Rule constant %r is not an object of the task: %s"
+                        % (x, format_rule(rule))
+                    )
+            print(
+                atom.predicate,
+                predicate_index[atom.predicate],
+                int(atom.negated),
+                len(atom.args),
+                " ".join(args_list),
+                file=output,
+            )
+
+
+def print_complements(output, complements, predicate_index):
+    # The fresh complement concepts the lowerbound rules use (see
+    # ontology._kept_complements), always printed ("LOWERBOUND-COMPLEMENTS 0"
+    # without an ontology):
+    # - Canary and the number N of complements
+    # - N lines with the complement's name and index, then the name and
+    # index of the concept it complements
+    print("LOWERBOUND-COMPLEMENTS %d" % len(complements), file=output)
+    for complement, concept in complements:
+        print(
+            complement,
+            predicate_index[complement],
+            concept,
+            predicate_index[concept],
+            file=output,
+        )
+
+
+def print_ontology(output, konclude_ontology, predicate_index):
+    # The ontology for the search's Konclude reasoner (see
+    # ontology.write_functional_ontology): "ONTOLOGY 0" without one, else
+    # - "ONTOLOGY 1"
+    # - the path of the ontology file in OWL functional syntax, on a line of
+    # its own
+    # - the IRI prefix of the task's objects (an object's IRI is the prefix
+    # followed by its name)
+    # - "VOCABULARY" and the number N of predicates that are ontology classes
+    # (unary) or object properties (binary), followed by N lines with the
+    # predicate name, its index and its IRI
+    if konclude_ontology is None:
+        print("ONTOLOGY 0", file=output)
+        return
+    path, object_iri_prefix, predicate_iris = konclude_ontology
+    vocabulary = sorted(
+        (predicate_index[name], name, iri)
+        for name, iri in predicate_iris.items()
+        if name in predicate_index
+    )
+    print("ONTOLOGY 1", file=output)
+    print(path, file=output)
+    print(object_iri_prefix, file=output)
+    print("VOCABULARY %d" % len(vocabulary), file=output)
+    for index, name, iri in vocabulary:
+        print(name, index, iri, file=output)
+
+
+def print_konclude_queries(output, mkos, object_index, predicate_index):
+    # The SPARQL query of each mko of the action preconditions and the goal
+    # (an atom flagged mko), translated once, for the search's Konclude
+    # reasoner (see ontology.konclude_queries and queries.sparql), always
+    # printed ("KONCLUDE-QUERIES 0" without an ontology; with one, also
+    # without an ONTOLOGY section, i.e. without --konclude-ontology-file).
+    # An mko without a translation isn't listed.
+    # - Canary and the number N of queries
+    # - Per query, a line with either
+    #    - "KONCLUDE-QUERY", the name and index of a QUERY<i> predicate, and
+    # its arity: the query of every QUERY<i> atom, whose argument j is the
+    # answer variable x<j>
+    #    - or "KONCLUDE-MKO" and an atom, as an action precondition: predicate
+    # name and index, number of arguments, then pairs (O, i): O is 'c' for a
+    # constant (i: its object index), 'p' for a variable (i: its number, by
+    # first occurrence). The query of every atom flagged mko that is the same
+    # up to the names of its variables; its variable i is the answer variable
+    # x<i>
+    #  followed by
+    #    - the number K of answer variables, then the K answer variables
+    # (without "?")
+    #    - the number D of its conjunctive queries (its answers are the union
+    # of theirs)
+    # - Per conjunctive query, a line with the number C of its connected
+    # components (its answers are the product of theirs), then C lines, each a
+    # SPARQL query of one component: a SELECT of its answer variables, or an
+    # ASK if it has none (it keeps the product if entailed, empties it
+    # otherwise)
+    entries = []
+    if mkos is not None:
+        for name, query in mkos.query_entries():
+            arity = len(query[0])
+            entries.append(
+                ([ontology.KONCLUDE_QUERY, name, predicate_index[name], arity], query)
+            )
+        for (predicate, args), query in mkos.mko_entries():
+            args_list = []
+            for x in args:
+                if is_variable(x):
+                    args_list += ["p", x[len("?x"):]]
+                else:
+                    args_list += ["c", str(object_index[x])]
+            entries.append(
+                (
+                    [ontology.KONCLUDE_MKO, predicate, predicate_index[predicate], len(args)]
+                    + args_list,
+                    query,
+                )
+            )
+    print("KONCLUDE-QUERIES %d" % len(entries), file=output)
+    for head, (variables, cqs) in entries:
+        print(*head, len(variables), *variables, len(cqs), file=output)
+        for components in cqs:
+            print(len(components), file=output)
+            for sparql in components:
+                print(sparql, file=output)
+
+
 def print_goal(output, task, atom_index, object_index, predicate_index):
     # Print canary and the number of atoms in the goal, the output of each
     # individual goal atom depends on the representation we are using. See below
@@ -356,19 +555,20 @@ def print_goal(output, task, atom_index, object_index, predicate_index):
     for index, atom in enumerate(goal_list):
         if options.ground_state_representation:
             # If we use ground state representation, we simply output the
-            # atom name, followed by its atom index and whether it is negated
-            # or not in the goal.
-            print(atom, atom_index[str(atom)], int(atom.negated), file=output)
+            # atom name, followed by its atom index, whether it is negated
+            # or not in the goal, and its mko flag.
+            print(atom, atom_index[str(atom)], int(atom.negated),
+                  int(atom.mko), file=output)
         else:
             # If we use sparse state representation, we output the atom name,
             # its predicate index, a boolean flag indicating whether it is
             # negated in the goal condition or not, the number of arguments
-            # in the predicate, and the indices of the objects instantiating
-            # the arguments.
-            # MKOs should already have been replaced with predicates earlier.
+            # in the predicate, the indices of the objects instantiating
+            # the arguments, and its mko flag (as for action preconditions).
             print(atom, predicate_index[atom.predicate], int(atom.negated),
                   len(atom.args),
                   ' '.join(str(object_index[o]) for o in atom.args),
+                  int(atom.mko),
                   file=output)
 
 
@@ -497,12 +697,13 @@ def remove_static_predicates_from_goal(task, static_pred):
     if isinstance(task.goal, pddl.conditions.Atom) or \
        isinstance(task.goal, pddl.Atom) or \
        isinstance(task.goal, pddl.NegatedAtom):
-        if task.goal.predicate not in static_pred:
+        if task.goal.mko or task.goal.predicate not in static_pred:
             return
         else:
             removed += 1
     for g in task.goal.parts:
-        if isinstance(g, pddl.MinimumKnowledgeOperator) or g.predicate not in static_pred:
+        if isinstance(g, pddl.MinimalKnowledgeOperator) or g.mko or \
+           g.predicate not in static_pred:
             parts.append(g)
         else:
             removed += 1
@@ -570,8 +771,14 @@ def output_trivially_solvable_task():
     INITIAL-STATE 1
     dummy() 0 0 0 0
     GOAL 1
-    dummy() 0 0 0
-    ACTION-SCHEMAS 0"""
+    dummy() 0 0 0 0
+    ACTION-SCHEMAS 0
+    AXIOMS 0
+    LOWERBOUND-RULES 0
+    LOWERBOUND-COMPLEMENTS 0
+    UPPERBOUND-RULES 0
+    ONTOLOGY 0
+    KONCLUDE-QUERIES 0"""
     print("Printing a trivially solvable task.", file=native_stdout)
     print(dummy_task)
     return
@@ -588,8 +795,14 @@ def output_trivially_unsolvable_task():
 
     INITIAL-STATE 0
     GOAL 1
-    dummy() 0 0 0
-    ACTION-SCHEMAS 0"""
+    dummy() 0 0 0 0
+    ACTION-SCHEMAS 0
+    AXIOMS 0
+    LOWERBOUND-RULES 0
+    LOWERBOUND-COMPLEMENTS 0
+    UPPERBOUND-RULES 0
+    ONTOLOGY 0
+    KONCLUDE-QUERIES 0"""
     print("Printing a trivially unsolvable task.", file=native_stdout)
     print(dummy_task)
     return

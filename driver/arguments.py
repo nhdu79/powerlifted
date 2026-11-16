@@ -49,7 +49,11 @@ def parse_options():
                         help='Instance file in PDDL', required=True)
     parser.add_argument('-o', '--ontology', dest='ontology',
                         action='store', default=None,
-                        help='Instance file in PDDL', required=True)
+                        help='Ontology file (optional)')
+    parser.add_argument('--clipper', dest='clipper',
+                        action='store', default=None,
+                        help='Clipper executable used with --ontology '
+                             '(default: $CLIPPER_PATH, else clipper.sh on PATH)')
     parser.add_argument('--build', dest='build', action='store_true',
                         help='Build planner before search.')
     parser.add_argument('--debug', dest='debug', action='store_true',
@@ -101,6 +105,12 @@ def parse_options():
                         help="use full-state novelty checking instead of the default lazy effects-only check")
     parser.add_argument("--novelty-early-stop", action="store_true",
                         help="flag if the novelty evaluation of a state should stop as soon as the w-value is defined")
+    parser.add_argument("--use-konclude", action="store_true",
+                        help="flag if the search should use the Konclude reasoner (not supported yet; "
+                             "with --build, also builds with it)")
+    parser.add_argument("--konclude-restart-every", type=int, default=None,
+                        help="with --use-konclude, restart the Konclude worker every N state changes "
+                             "(0: never; default: the search's)")
     parser.add_argument("--unit-cost", action="store_true",
                            help="flag if the actions should be treated as unit-cost actions")
     parser.add_argument("--keep-translator-file", action="store_true",

@@ -7,18 +7,23 @@ class Atom {
 
     std::vector<Argument> arguments;
     std::string name;
-    int predicate_symbol : 31;
+    int predicate_symbol : 30;
     bool negated : 1;
+    // The atom stands for an mko: it is to be evaluated w.r.t. the
+    // lowerbound rules, not on the state.
+    bool mko : 1;
 
 public:
     Atom(std::vector<Argument> &&tuples,
          std::string &&name,
          int predicate_symbol,
-         bool negated) :
+         bool negated,
+         bool mko = false) :
         arguments(std::move(tuples)),
         name(std::move(name)),
         predicate_symbol(predicate_symbol),
-        negated(negated) {}
+        negated(negated),
+        mko(mko) {}
 
     const std::string &get_name() const {
         return name;
@@ -34,6 +39,10 @@ public:
 
     bool is_negated() const {
         return negated;
+    }
+
+    bool is_mko() const {
+        return mko;
     }
 
     bool is_ground() const {
