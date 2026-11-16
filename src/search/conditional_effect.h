@@ -20,6 +20,10 @@ class ConditionalEffect{
      */
     std::vector<bool> positive_nullary_cond;
     std::vector<bool> negative_nullary_cond;
+    // Nullary conditions standing for an mko (see Atom::is_mko), kept apart
+    // as they are evaluated w.r.t. the lowerbound rules (as in ActionSchema).
+    std::vector<bool> positive_nullary_mko_cond;
+    std::vector<bool> negative_nullary_mko_cond;
     Atom effect;
 
 public:
@@ -27,6 +31,8 @@ public:
                                std::vector<Atom> equality_condition,
                                std::vector<bool> positive_nullary_cond,
                                std::vector<bool> negative_nullary_cond,
+                               std::vector<bool> positive_nullary_mko_cond,
+                               std::vector<bool> negative_nullary_mko_cond,
                                Atom effect);
 
 
@@ -48,6 +54,14 @@ public:
 
     const std::vector<bool> &get_negative_nullary_cond() const {
         return negative_nullary_cond;
+    }
+
+    const std::vector<bool> &get_positive_nullary_mko_cond() const {
+        return positive_nullary_mko_cond;
+    }
+
+    const std::vector<bool> &get_negative_nullary_mko_cond() const {
+        return negative_nullary_mko_cond;
     }
 };
 

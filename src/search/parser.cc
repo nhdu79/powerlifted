@@ -205,14 +205,14 @@ Atom parse_literal(bool allow_f = true) {
 /*
  * Reads num condition literals (see print_condition in the translator), each
  * followed by its mko flag, and returns the number of mko atoms among them.
- * Nullary mko atoms go to positive/negative_nul_mko_cond; without these
- * (effect conditions), they aren't supported yet.
+ * Nullary mko atoms go to positive/negative_nul_mko_cond, the others to
+ * positive/negative_nul_cond.
  */
 int parse_condition(int num, Task &task, vector<Atom>& conditions,
     vector<Atom>& equality_conditions, vector<bool> &positive_nul_cond,
     vector<bool> &negative_nul_cond,
-    vector<bool> *positive_nul_mko_cond = nullptr,
-    vector<bool> *negative_nul_mko_cond = nullptr) {
+    vector<bool> &positive_nul_mko_cond,
+    vector<bool> &negative_nul_mko_cond) {
     int number_mko_atoms = 0;
     for (int j = 0; j < num; ++j) {
         string cond_name;
@@ -225,16 +225,8 @@ int parse_condition(int num, Task &task, vector<Atom>& conditions,
             bool mko;
             cin >> mko;
             number_mko_atoms += mko;
-            if (mko) {
-                vector<bool> *nul_mko_cond =
-                    negated ? negative_nul_mko_cond : positive_nul_mko_cond;
-                if (!nul_mko_cond) {
-                    cerr << "Error: nullary mko atom " << cond_name
-                         << " in an effect condition is not supported yet." << endl;
-                    utils::exit_with(utils::ExitCode::SEARCH_UNSUPPORTED);
-                }
-                (*nul_mko_cond)[index] = true;
-            }
+            if (mko)
+                (negated ? negative_nul_mko_cond : positive_nul_mko_cond)[index] = true;
             else if (!negated)
                 positive_nul_cond[index] = true;
             else
@@ -304,7 +296,7 @@ int parse_action_schemas(Task &task, int number_action_schemas)
         number_mko_atoms += parse_condition(
             precond_size, task, preconditions, equality_preconditions,
             positive_nul_precond, negative_nul_precond,
-            &positive_nul_mko_precond, &negative_nul_mko_precond);
+            positive_nul_mko_precond, negative_nul_mko_precond);
        
         // parse effects 
         cin >> eff_size;
@@ -316,11 +308,17 @@ int parse_action_schemas(Task &task, int number_action_schemas)
             vector<Atom> conditions, equality_conditions;
             vector<bool> positive_nul_cond(task.predicates.size(), false);
             vector<bool> negative_nul_cond(task.predicates.size(), false);
-            number_mko_atoms += parse_condition(effcond_size, task, conditions,
-                            equality_conditions, positive_nul_cond, negative_nul_cond);
+            vector<bool> positive_nul_mko_cond(task.predicates.size(), false);
+            vector<bool> negative_nul_mko_cond(task.predicates.size(), false);
+            number_mko_atoms += parse_condition(
+                effcond_size, task, conditions, equality_conditions,
+                positive_nul_cond, negative_nul_cond,
+                positive_nul_mko_cond, negative_nul_mko_cond);
 
             effects.emplace_back(std::move(conditions), std::move(equality_conditions),
                                  std::move(positive_nul_cond), std::move(negative_nul_cond),
+                                 std::move(positive_nul_mko_cond),
+                                 std::move(negative_nul_mko_cond),
                                  std::move(affected));
         }
         ActionSchema a(std::move(name),
